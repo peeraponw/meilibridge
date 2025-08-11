@@ -1,0 +1,205 @@
+groups:
+  - name: meilibridge_data_integrity
+    interval: 30s
+    rules:
+      # CDC Lag Alert
+      - alert: HighCDCLag
+        expr: meilibridge_cdc_lag_seconds > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CDC lag detected for table {{ $labels.table }}"
+          description: "CDC lag is {{ $value }}s for table {{ $labels.table }} (threshold: 60s)"
+      
+      # Critical CDC Lag Alert
+      - alert: CriticalCDCLag
+        expr: meilibridge_cdc_lag_seconds > 300
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CDC lag detected for table {{ $labels.table }}"
+          description: "CDC lag is {{ $value }}s for table {{ $labels.table }} (threshold: 300s)"
+      
+      # Exactly-Once Violations
+      - alert: ExactlyOnceViolations
+        expr: rate(meilibridge_exactly_once_violations_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Exactly-once delivery violations detected"
+          description: "{{ $value }} violations/sec for table {{ $labels.table }}, type: {{ $labels.violation_type }}"
+      
+      # Checkpoint Lag
+      - alert: HighCheckpointLag
+        expr: meilibridge_checkpoint_lag_seconds > 120
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High checkpoint lag for {{ $labels.source }}/{{ $labels.table }}"
+          description: "Checkpoint is {{ $value }}s behind current position"
+
+  - name: meilibridge_performance
+    interval: 30s
+    rules:
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: (meilibridge_memory_usage_bytes / (1024 * 1024 * 1024)) > 0.8 * 8  # Assuming 8GB limit
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage in {{ $labels.component }}"
+          description: "Memory usage is {{ $value | humanize }}B (80% of limit)"
+      
+      # Critical Memory Usage
+      - alert: CriticalMemoryUsage
+        expr: (meilibridge_memory_usage_bytes / (1024 * 1024 * 1024)) > 0.95 * 8
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical memory usage in {{ $labels.component }}"
+          description: "Memory usage is {{ $value | humanize }}B (95% of limit)"
+      
+      # Connection Pool Exhaustion
+      - alert: ConnectionPoolExhausted
+        expr: meilibridge_connection_pool_saturation_ratio > 0.9
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Connection pool {{ $labels.pool_name }} is nearly exhausted"
+          description: "Pool saturation is {{ $value | humanizePercentage }} for source {{ $labels.source }}"
+      
+      # High Processing Latency
+      - alert: HighProcessingLatency
+        expr: histogram_quantile(0.95, rate(meilibridge_processing_latency_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High processing latency for {{ $labels.table }}"
+          description: "95th percentile latency is {{ $value }}s for stage {{ $labels.stage }}"
+
+  - name: meilibridge_business
+    interval: 30s
+    rules:
+      # High Failed Event Rate
+      - alert: HighFailedEventRate
+        expr: |
+          (
+            sum(rate(meilibridge_cdc_events_failed_total[5m])) by (table)
+            /
+            sum(rate(meilibridge_cdc_events_total[5m])) by (table)
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High failed event rate for table {{ $labels.table }}"
+          description: "{{ $value | humanizePercentage }} of events are failing"
+      
+      # Critical Failed Event Rate
+      - alert: CriticalFailedEventRate
+        expr: |
+          (
+            sum(rate(meilibridge_cdc_events_failed_total[5m])) by (table)
+            /
+            sum(rate(meilibridge_cdc_events_total[5m])) by (table)
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical failed event rate for table {{ $labels.table }}"
+          description: "{{ $value | humanizePercentage }} of events are failing"
+      
+      # Sync Lag by Table
+      - alert: HighSyncLag
+        expr: meilibridge_sync_lag_by_table_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High sync lag for {{ $labels.table }}"
+          description: "Sync lag is {{ $value }}s for {{ $labels.source }}/{{ $labels.table }} -> {{ $labels.index }}"
+      
+      # Dead Letter Queue Growing
+      - alert: DeadLetterQueueGrowing
+        expr: rate(meilibridge_dead_letter_events_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead letter queue is growing"
+          description: "{{ $value }} events/sec being sent to DLQ for task {{ $labels.task_id }}"
+
+  - name: meilibridge_availability
+    interval: 30s
+    rules:
+      # Circuit Breaker Open
+      - alert: CircuitBreakerOpen
+        expr: meilibridge_circuit_breaker_state == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker {{ $labels.name }} is OPEN"
+          description: "Circuit breaker has been open for more than 1 minute"
+      
+      # No Active Sync Tasks
+      - alert: NoActiveSyncTasks
+        expr: sum(meilibridge_active_sync_tasks) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No active sync tasks running"
+          description: "All sync tasks have been inactive for 5 minutes"
+      
+      # Replication Slot Lag
+      - alert: ReplicationSlotLag
+        expr: meilibridge_replication_lsn == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Replication slot {{ $labels.slot_name }} is not advancing"
+          description: "LSN position has not changed in 5 minutes"
+
+  - name: meilibridge_slo
+    interval: 30s
+    rules:
+      # SLO: 99% Success Rate
+      - alert: SLOViolationSuccessRate
+        expr: |
+          (
+            sum(rate(meilibridge_documents_synced_total{status="success"}[30m]))
+            /
+            sum(rate(meilibridge_documents_synced_total[30m]))
+          ) < 0.99
+        for: 5m
+        labels:
+          severity: critical
+          slo: "true"
+        annotations:
+          summary: "SLO violation: Success rate below 99%"
+          description: "Current success rate: {{ $value | humanizePercentage }}"
+      
+      # SLO: P99 Latency < 1s
+      - alert: SLOViolationLatency
+        expr: |
+          histogram_quantile(0.99, 
+            sum(rate(meilibridge_processing_latency_seconds_bucket[30m])) by (le)
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: critical
+          slo: "true"
+        annotations:
+          summary: "SLO violation: P99 latency exceeds 1 second"
+          description: "Current P99 latency: {{ $value }}s"

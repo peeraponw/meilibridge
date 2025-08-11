@@ -1,0 +1,148 @@
+services:
+  # Uncomment below to run MeiliBridge as part of docker-compose
+  # meilibridge:
+  #   build: .
+  #   container_name: meilibridge
+  #   environment:
+  #     - RUST_LOG=info
+  #     - MEILIBRIDGE__SOURCE__HOST=postgres
+  #     - MEILIBRIDGE__SOURCE__PORT=5432
+  #     - MEILIBRIDGE__SOURCE__DATABASE=meilibridge_dev
+  #     - MEILIBRIDGE__SOURCE__USERNAME=postgres
+  #     - MEILIBRIDGE__SOURCE__PASSWORD=meilibridge_dev_password
+  #     - MEILIBRIDGE__MEILISEARCH__URL=http://meilisearch:7700
+  #     - MEILIBRIDGE__MEILISEARCH__API_KEY=meilibridge_dev_master_key
+  #     - MEILIBRIDGE__REDIS__URL=redis://redis:6379
+  #     # Optional: Override default ports
+  #     # - MEILIBRIDGE_API_PORT=8080
+  #     # - MEILIBRIDGE_API_HOST=0.0.0.0
+  #   ports:
+  #     - "7701:7701"  # Default API port (change both if using MEILIBRIDGE_API_PORT)
+  #   volumes:
+  #     - ./config.yaml:/etc/meilibridge/config.yaml:ro
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     meilisearch:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - meilibridge-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: meilibridge-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: meilibridge_dev_password
+      POSTGRES_DB: meilibridge_dev
+    ports:
+      - "5433:5432"  # Using 5433 to avoid conflicts
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: >
+      postgres
+      -c wal_level=logical
+      -c max_replication_slots=4
+      -c max_wal_senders=4
+      -c max_connections=200
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - meilibridge-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: meilibridge-redis
+    ports:
+      - "6380:6379"  # Using 6380 to avoid conflicts
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - meilibridge-network
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    container_name: meilibridge-meilisearch
+    environment:
+      MEILI_MASTER_KEY: meilibridge_dev_master_key
+      MEILI_ENV: development
+      MEILI_HTTP_PAYLOAD_SIZE_LIMIT: 100MB
+      MEILI_LOG_LEVEL: INFO
+    ports:
+      - "7700:7700"
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - meilibridge-network
+
+  meilisearch-ui:
+    image: riccoxie/meilisearch-ui:latest
+    container_name: meilibridge-meilisearch-ui
+    environment:
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: meilibridge_dev_master_key
+    ports:
+      - "24900:24900"
+    depends_on:
+      meilisearch:
+        condition: service_healthy
+    networks:
+      - meilibridge-network
+
+  # Optional: Adminer for PostgreSQL management
+  adminer:
+    image: adminer:latest
+    container_name: meilibridge-adminer
+    ports:
+      - "8090:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    networks:
+      - meilibridge-network
+
+  # Optional: RedisInsight for Redis management
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    container_name: meilibridge-redisinsight
+    ports:
+      - "8001:8001"
+    volumes:
+      - redisinsight_data:/db
+    depends_on:
+      - redis
+    networks:
+      - meilibridge-network
+
+volumes:
+  postgres_data:
+    name: meilibridge_postgres_data
+  redis_data:
+    name: meilibridge_redis_data
+  meilisearch_data:
+    name: meilibridge_meilisearch_data
+  redisinsight_data:
+    name: meilibridge_redisinsight_data
+
+networks:
+  meilibridge-network:
+    name: meilibridge_network
+    driver: bridge

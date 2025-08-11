@@ -1,0 +1,40 @@
+[default]
+# Tarpaulin configuration for MeiliBridge
+
+# Include only source files
+workspace = true
+all-features = true
+run-types = ["Tests", "Doctests"]
+
+# Exclude test files and other non-source files
+exclude-files = [
+    "tests/*",
+    "benches/*",
+    "examples/*",
+    "src/bin/*",
+    "src/main.rs"  # Exclude main.rs as it's just the entry point
+]
+
+# Output formats
+out = ["Html", "Xml", "Lcov"]
+
+# Coverage options
+branch = true
+follow-exec = true
+forward-signals = true
+count = true
+
+# Timeout for tests (in seconds)
+timeout = "300"
+
+# Ignore panics in tests
+ignore-panics = true
+
+# Parallel test execution
+jobs = 4
+
+# Skip clean to speed up repeated runs
+skip-clean = false
+
+# Verbose output
+verbose = true

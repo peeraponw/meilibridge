@@ -1,0 +1,49 @@
+# Git
+.git/
+.gitignore
+
+# Build artifacts
+target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Local configuration
+config.yaml
+config.local.yaml
+.env
+.env.local
+
+# Documentation
+docs/
+README.md
+CHANGELOG.md
+
+# Scripts (except docker-entrypoint.sh which is needed in the image)
+scripts/
+!docker/docker-entrypoint.sh
+
+# Test data
+tests/
+benches/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# macOS
+.DS_Store
+
+# Docker
+docker-compose.override.yml
+.dockerignore

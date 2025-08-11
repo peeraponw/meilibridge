@@ -1,0 +1,105 @@
+[package]
+name = "meilibridge"
+version = "0.1.0"
+edition = "2021"
+authors = ["Omkar Todkar"]
+description = "High-performance PostgreSQL to Meilisearch connector"
+license = "MIT"
+repository = "https://github.com/binary-touch/MeiliBridge"
+keywords = ["meilisearch", "postgresql", "cdc", "sync", "replication"]
+categories = ["database"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.47", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Configuration
+config = { version = "0.15", features = ["yaml"] }
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "chrono", "fmt"] }
+
+# Error handling
+thiserror = "2.0"
+
+# Date/time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID generation
+uuid = { version = "1.18", features = ["v4", "serde"] }
+
+# PostgreSQL
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1", "with-uuid-1"] }
+deadpool-postgres = { version = "0.12", features = ["serde"] }
+postgres-types = { version = "0.2", features = ["derive"] }
+postgres-protocol = "0.6"
+
+# Binary parsing
+bytes = "1.5"
+byteorder = "1.5"
+
+# Redis
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# Meilisearch
+meilisearch-sdk = "0.26"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+
+# Web framework
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+
+# Async utilities
+futures = "0.3"
+async-trait = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# Random number generation
+rand = "0.8"
+
+# Lazy static initialization
+lazy_static = "1.4"
+
+# Metrics
+prometheus = { version = "0.13", features = ["process"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Circuit breaker
+circuit_breaker = "0.1.1"
+
+[dev-dependencies]
+# Testing utilities
+tokio-test = "0.4.4"
+pretty_assertions = "1.4.1"
+once_cell = "1.19"
+test-case = "3.3.1"
+tempfile = "3.10"
+async-trait = "0.1"
+testcontainers = "0.15"
+testcontainers-modules = { version = "0.3", features = ["postgres", "redis"] }
+
+[[test]]
+name = "unit"
+path = "tests/unit.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/mod.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug = true

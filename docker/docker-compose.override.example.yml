@@ -1,0 +1,39 @@
+# Example docker-compose.override.yml for custom port configuration
+# Copy this to docker-compose.override.yml and modify as needed
+
+version: '3.8'
+
+services:
+  # Example: Running MeiliBridge with custom ports
+  meilibridge:
+    image: meilibridge:latest
+    container_name: meilibridge
+    environment:
+      # Keep all existing environment variables
+      - RUST_LOG=info
+      - MEILIBRIDGE__SOURCE__PASSWORD=${POSTGRES_PASSWORD}
+      - MEILIBRIDGE__MEILISEARCH__API_KEY=${MEILISEARCH_API_KEY}
+      - MEILIBRIDGE__REDIS__PASSWORD=${REDIS_PASSWORD}
+      
+      # Custom port configuration
+      - MEILIBRIDGE_API_PORT=8080  # Override default API port (7701)
+      - MEILIBRIDGE_API_HOST=0.0.0.0  # Override default host
+      # - MEILIBRIDGE_METRICS_PORT=9090  # Override metrics port when implemented
+      
+    ports:
+      # Map the custom internal port to custom external port
+      - "8080:8080"  # external:internal (must match MEILIBRIDGE_API_PORT)
+      # - "9090:9090"  # For metrics when implemented
+      
+    # Rest of the configuration remains the same
+    volumes:
+      - ./config.yaml:/etc/meilibridge/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - meilibridge-network

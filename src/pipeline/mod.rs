@@ -1,0 +1,21 @@
+pub mod transformer;
+pub mod filter;
+pub mod mapper;
+pub mod orchestrator;
+pub mod cdc_coordinator;
+pub mod startup_check;
+pub mod parallel_processor;
+pub mod exactly_once_helpers;
+pub mod soft_delete;
+pub mod adaptive_batching;
+pub mod memory_monitor;
+pub mod streaming_processor;
+
+pub use orchestrator::PipelineOrchestrator;
+pub use transformer::EventTransformer;
+pub use cdc_coordinator::CdcCoordinator;
+pub use startup_check::StartupChecker;
+pub use parallel_processor::{ParallelConfig, ParallelTableProcessor, WorkStealingCoordinator};
+pub use adaptive_batching::{AdaptiveBatchingManager, BatchMetrics};
+pub use memory_monitor::{MemoryMonitor, MemoryStats, MemoryPressureEvent};
+pub use streaming_processor::{StreamingJsonProcessor, ZeroCopyEventRouter};

@@ -1,0 +1,68 @@
+# Git files
+.git
+.gitignore
+
+# Build artifacts
+target/
+Dockerfile
+.dockerignore
+
+# Development files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Documentation
+docs/
+README.md
+LICENSE
+
+# Test files
+tests/
+*.test
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Local configuration
+config.yaml
+.env
+.env.*
+
+# Logs
+*.log
+logs/
+
+# Docker compose files
+docker-compose.yml
+docker-compose.yaml
+compose.yaml
+
+# Scripts (except necessary ones)
+scripts/test_*.sh
+scripts/demo_*.sh
+!scripts/docker-entrypoint.sh
+
+# Temporary files
+tmp/
+temp/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# Linux
+.directory
