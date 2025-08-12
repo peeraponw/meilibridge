@@ -44,17 +44,24 @@ RUN cargo build --release
 
 # Runtime stage
 # Using Ubuntu 24.04 (Noble) which has better security updates
-FROM ubuntu:noble-20240801 AS runtime
+FROM ubuntu:24.04
 
-# Install runtime dependencies and create user in one layer
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     libpq5 \
-    && useradd -m -u 1000 -U -s /bin/sh meilibridge \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r meilibridge && \
+    useradd -r -g meilibridge -d /home/meilibridge -s /sbin/nologin -c "MeiliBridge user" meilibridge && \
+    mkdir -p /home/meilibridge && \
+    chown -R meilibridge:meilibridge /home/meilibridge
 
 # Note: Ubuntu 24.04 includes security patches for known vulnerabilities.
 # The zlib CVE-2023-45853 affects MiniZip functionality, not core zlib.
