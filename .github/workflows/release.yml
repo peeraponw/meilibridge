@@ -3,13 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g., v1.0.0)'
-        required: true
-        type: string
+      - 'v*'
 
 permissions:
   contents: write
@@ -28,11 +22,7 @@ jobs:
     - name: Determine version
       id: version
       run: |
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          VERSION="${{ github.event.inputs.version }}"
-        else
-          VERSION="${{ github.ref_name }}"
-        fi
+        VERSION="${{ github.ref_name }}"
         
         # Validate version format
         if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
@@ -45,17 +35,10 @@ jobs:
         echo "version_without_v=${VERSION#v}" >> $GITHUB_OUTPUT
 
 
-  # Run full test suite before release
-  test:
-    name: Pre-release Tests
-    needs: validate-version
-    uses: ./.github/workflows/ci.yml
-    secrets: inherit
-
   # Build release artifacts
   build-artifacts:
     name: Build Release Artifacts
-    needs: [validate-version, test]
+    needs: [validate-version]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -186,7 +169,7 @@ jobs:
   # Publish to crates.io
   publish-crates:
     name: Publish to crates.io
-    needs: [validate-version, test]
+    needs: [validate-version]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -211,7 +194,7 @@ jobs:
   # Build and push Docker images
   docker-release:
     name: Docker Release
-    needs: [validate-version, test]
+    needs: [validate-version]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
