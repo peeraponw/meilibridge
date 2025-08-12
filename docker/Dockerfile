@@ -1,6 +1,6 @@
 # Multi-stage build for optimal image size
 # Build stage
-FROM rust:1.75-bookworm as builder
+FROM rust:1.82-bookworm AS builder
 
 # Add labels for metadata
 ARG BUILD_DATE
@@ -13,8 +13,8 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.vendor="MeiliBridge" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="https://github.com/your-org/meilibridge" \
-      org.opencontainers.image.documentation="https://github.com/your-org/meilibridge/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/binary-touch/meilibridge" \
+      org.opencontainers.image.documentation="https://github.com/binary-touch/meilibridge/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT"
 
 # Install build dependencies

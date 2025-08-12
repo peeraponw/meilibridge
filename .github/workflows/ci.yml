@@ -14,7 +14,7 @@ env:
   RUST_BACKTRACE: 1
   RUSTFLAGS: "-D warnings"
   CARGO_INCREMENTAL: 0
-  RUST_VERSION: "1.78"  # Minimum version for lock file v4 support
+  RUST_VERSION: "1.82"  # Minimum version for dependencies
 
 jobs:
   # Security audit for dependencies
@@ -52,7 +52,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: "1.78"
+        toolchain: "1.82"
     
     - name: Cache cargo-deny
       uses: actions/cache@v3
@@ -63,7 +63,7 @@ jobs:
     - name: Install cargo-deny
       run: |
         if ! command -v cargo-deny &> /dev/null; then
-          cargo install cargo-deny
+          cargo install cargo-deny --version 0.16.2
         fi
     
     - name: Verify deny.toml exists
@@ -86,7 +86,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: "1.78"
+        toolchain: "1.82"
         components: rustfmt, clippy
     
     - name: Cache dependencies
@@ -112,7 +112,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: ["1.78", "stable", "beta"]
+        rust: ["1.82", "stable", "beta"]
         exclude:
           # Skip beta on Windows to save CI time
           - os: windows-latest
@@ -150,7 +150,7 @@ jobs:
     - name: Read MSRV from Cargo.toml
       id: msrv
       run: |
-        MSRV=$(grep -oP 'rust-version = "\K[^"]+' Cargo.toml || echo "1.78")
+        MSRV=$(grep -oP 'rust-version = "\K[^"]+' Cargo.toml || echo "1.82")
         echo "msrv=$MSRV" >> $GITHUB_OUTPUT
     
     - name: Install Rust ${{ steps.msrv.outputs.msrv }}
@@ -173,7 +173,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: ["1.78"]
+        rust: ["1.82"]
     steps:
     - uses: actions/checkout@v4
     
@@ -238,7 +238,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: "1.78"
+        toolchain: "1.82"
     
     - name: Cache dependencies
       uses: Swatinem/rust-cache@v2
@@ -269,7 +269,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: "1.78"
+        toolchain: "1.82"
     
     - name: Cache dependencies
       uses: Swatinem/rust-cache@v2
@@ -288,7 +288,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: "1.78"
+        toolchain: "1.82"
     
     - name: Cache dependencies
       uses: Swatinem/rust-cache@v2
@@ -340,7 +340,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: "1.78"
+        toolchain: "1.82"
     
     - name: Cache dependencies
       uses: Swatinem/rust-cache@v2
