@@ -1,10 +1,10 @@
 use crate::error::MeiliBridgeError;
 use crate::models::stream_event::Event;
+use chrono::{DateTime, Duration, Utc};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, warn, info};
-use std::collections::HashMap;
-use chrono::{DateTime, Utc, Duration};
+use tracing::{error, info, warn};
 
 /// Strategy for handling errors
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,8 +108,10 @@ impl ErrorHandler {
     /// Determine error handling strategy based on context
     pub async fn determine_strategy(&self, context: &ErrorContext) -> ErrorHandlingStrategy {
         let mut stats = self.task_stats.write().await;
-        let task_stats = stats.entry(context.task_id.clone()).or_insert_with(ErrorStats::new);
-        
+        let task_stats = stats
+            .entry(context.task_id.clone())
+            .or_insert_with(ErrorStats::new);
+
         // Record the error
         task_stats.record_error(context.error_type);
 
@@ -134,7 +136,10 @@ impl ErrorHandler {
             }
             ErrorType::DataValidation => {
                 // Data validation errors should go to dead letter
-                warn!("Data validation error for task '{}', sending to dead letter", context.task_id);
+                warn!(
+                    "Data validation error for task '{}', sending to dead letter",
+                    context.task_id
+                );
                 ErrorHandlingStrategy::DeadLetter
             }
             ErrorType::NotFound => {
@@ -147,7 +152,10 @@ impl ErrorHandler {
             }
             ErrorType::RateLimit => {
                 // Always retry rate limit errors with backoff
-                info!("Rate limit error for task '{}', will retry", context.task_id);
+                info!(
+                    "Rate limit error for task '{}', will retry",
+                    context.task_id
+                );
                 ErrorHandlingStrategy::Retry
             }
             ErrorType::Network | ErrorType::Timeout => {
@@ -158,7 +166,10 @@ impl ErrorHandler {
                     // Check if error has been occurring for too long
                     let error_duration = context.last_error_time - context.first_error_time;
                     if error_duration > Duration::minutes(30) {
-                        error!("Network errors persisting for over 30 minutes, pausing task '{}'", context.task_id);
+                        error!(
+                            "Network errors persisting for over 30 minutes, pausing task '{}'",
+                            context.task_id
+                        );
                         ErrorHandlingStrategy::Pause
                     } else {
                         ErrorHandlingStrategy::DeadLetter
@@ -192,10 +203,10 @@ impl ErrorHandler {
             if task_stats.total_errors == 0 {
                 return 0.0;
             }
-            
+
             let recent_errors = task_stats.consecutive_errors as f64;
             let total_recent = recent_errors + 1.0; // Assume at least one success if we're still running
-            
+
             recent_errors / total_recent
         } else {
             0.0

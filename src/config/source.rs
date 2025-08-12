@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct NamedSourceConfig {
     /// Unique name for this source
     pub name: String,
-    
+
     /// Source configuration
     #[serde(flatten)]
     pub config: SourceConfig,
@@ -45,7 +45,7 @@ pub struct PostgreSQLConfig {
     /// SSL/TLS configuration
     #[serde(default)]
     pub ssl: SslConfig,
-    
+
     /// Statement cache configuration
     #[serde(default)]
     pub statement_cache: StatementCacheConfig,
@@ -114,7 +114,7 @@ pub struct StatementCacheConfig {
     /// Whether to enable statement caching
     #[serde(default = "default_cache_enabled")]
     pub enabled: bool,
-    
+
     /// Maximum number of statements to cache
     #[serde(default = "default_cache_max_size")]
     pub max_size: usize,

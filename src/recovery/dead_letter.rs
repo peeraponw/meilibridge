@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, warn};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::{mpsc, RwLock};
+use tracing::{debug, error, info, warn};
 
 /// Dead letter entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,19 +51,19 @@ impl DeadLetterEntry {
 pub trait DeadLetterStorage: Send + Sync {
     /// Store a dead letter entry
     async fn store(&self, entry: &DeadLetterEntry) -> Result<()>;
-    
+
     /// Retrieve entries for a task
     async fn get_by_task(&self, task_id: &str, limit: usize) -> Result<Vec<DeadLetterEntry>>;
-    
+
     /// Retrieve a specific entry
     async fn get(&self, id: &str) -> Result<Option<DeadLetterEntry>>;
-    
+
     /// Delete an entry
     async fn delete(&self, id: &str) -> Result<()>;
-    
+
     /// Count entries for a task
     async fn count_by_task(&self, task_id: &str) -> Result<usize>;
-    
+
     /// List all tasks with dead letters
     async fn list_tasks(&self) -> Result<Vec<String>>;
 }
@@ -87,7 +87,7 @@ impl MemoryDeadLetterStorage {
 impl DeadLetterStorage for MemoryDeadLetterStorage {
     async fn store(&self, entry: &DeadLetterEntry) -> Result<()> {
         let mut entries = self.entries.write().await;
-        
+
         // Check if we need to evict old entries
         while entries.len() >= self.max_entries {
             if let Some(evicted) = entries.pop_front() {
@@ -97,12 +97,15 @@ impl DeadLetterStorage for MemoryDeadLetterStorage {
                 );
             }
         }
-        
+
         entries.push_back(entry.clone());
-        debug!("Stored dead letter entry {} for task {}", entry.id, entry.task_id);
+        debug!(
+            "Stored dead letter entry {} for task {}",
+            entry.id, entry.task_id
+        );
         Ok(())
     }
-    
+
     async fn get_by_task(&self, task_id: &str, limit: usize) -> Result<Vec<DeadLetterEntry>> {
         let entries = self.entries.read().await;
         let result: Vec<DeadLetterEntry> = entries
@@ -113,30 +116,27 @@ impl DeadLetterStorage for MemoryDeadLetterStorage {
             .collect();
         Ok(result)
     }
-    
+
     async fn get(&self, id: &str) -> Result<Option<DeadLetterEntry>> {
         let entries = self.entries.read().await;
         Ok(entries.iter().find(|e| e.id == id).cloned())
     }
-    
+
     async fn delete(&self, id: &str) -> Result<()> {
         let mut entries = self.entries.write().await;
         entries.retain(|e| e.id != id);
         debug!("Deleted dead letter entry {}", id);
         Ok(())
     }
-    
+
     async fn count_by_task(&self, task_id: &str) -> Result<usize> {
         let entries = self.entries.read().await;
         Ok(entries.iter().filter(|e| e.task_id == task_id).count())
     }
-    
+
     async fn list_tasks(&self) -> Result<Vec<String>> {
         let entries = self.entries.read().await;
-        let mut tasks: Vec<String> = entries
-            .iter()
-            .map(|e| e.task_id.clone())
-            .collect();
+        let mut tasks: Vec<String> = entries.iter().map(|e| e.task_id.clone()).collect();
         tasks.sort();
         tasks.dedup();
         Ok(tasks)
@@ -151,18 +151,20 @@ pub struct FileDeadLetterStorage {
 impl FileDeadLetterStorage {
     pub async fn new(base_path: PathBuf) -> Result<Self> {
         // Ensure directory exists
-        fs::create_dir_all(&base_path).await
+        fs::create_dir_all(&base_path)
+            .await
             .map_err(|e| MeiliBridgeError::Io(e))?;
-        
+
         Ok(Self { base_path })
     }
-    
+
     fn get_task_dir(&self, task_id: &str) -> PathBuf {
         self.base_path.join(task_id)
     }
-    
+
     fn get_entry_path(&self, task_id: &str, entry_id: &str) -> PathBuf {
-        self.get_task_dir(task_id).join(format!("{}.json", entry_id))
+        self.get_task_dir(task_id)
+            .join(format!("{}.json", entry_id))
     }
 }
 
@@ -170,129 +172,154 @@ impl FileDeadLetterStorage {
 impl DeadLetterStorage for FileDeadLetterStorage {
     async fn store(&self, entry: &DeadLetterEntry) -> Result<()> {
         let task_dir = self.get_task_dir(&entry.task_id);
-        fs::create_dir_all(&task_dir).await
+        fs::create_dir_all(&task_dir)
+            .await
             .map_err(|e| MeiliBridgeError::Io(e))?;
-        
+
         let path = self.get_entry_path(&entry.task_id, &entry.id);
         let json = serde_json::to_string_pretty(entry)?;
-        
-        let mut file = fs::File::create(&path).await
+
+        let mut file = fs::File::create(&path)
+            .await
             .map_err(|e| MeiliBridgeError::Io(e))?;
-        file.write_all(json.as_bytes()).await
+        file.write_all(json.as_bytes())
+            .await
             .map_err(|e| MeiliBridgeError::Io(e))?;
-        
+
         debug!("Stored dead letter entry {} to {:?}", entry.id, path);
         Ok(())
     }
-    
+
     async fn get_by_task(&self, task_id: &str, limit: usize) -> Result<Vec<DeadLetterEntry>> {
         let task_dir = self.get_task_dir(task_id);
-        
+
         if !task_dir.exists() {
             return Ok(Vec::new());
         }
-        
+
         let mut entries = Vec::new();
-        let mut dir = fs::read_dir(&task_dir).await
+        let mut dir = fs::read_dir(&task_dir)
+            .await
             .map_err(|e| MeiliBridgeError::Io(e))?;
-        
-        while let Some(entry) = dir.next_entry().await
-            .map_err(|e| MeiliBridgeError::Io(e))? {
+
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .map_err(|e| MeiliBridgeError::Io(e))?
+        {
             if entries.len() >= limit {
                 break;
             }
-            
+
             let path = entry.path();
             if path.extension().map_or(false, |ext| ext == "json") {
-                let content = fs::read_to_string(&path).await
+                let content = fs::read_to_string(&path)
+                    .await
                     .map_err(|e| MeiliBridgeError::Io(e))?;
-                
+
                 match serde_json::from_str::<DeadLetterEntry>(&content) {
                     Ok(dead_letter) => entries.push(dead_letter),
                     Err(e) => error!("Failed to parse dead letter file {:?}: {}", path, e),
                 }
             }
         }
-        
+
         Ok(entries)
     }
-    
+
     async fn get(&self, id: &str) -> Result<Option<DeadLetterEntry>> {
         // We need to search all task directories
-        let mut dir = fs::read_dir(&self.base_path).await
+        let mut dir = fs::read_dir(&self.base_path)
+            .await
             .map_err(|e| MeiliBridgeError::Io(e))?;
-        
-        while let Some(entry) = dir.next_entry().await
-            .map_err(|e| MeiliBridgeError::Io(e))? {
-            if entry.file_type().await
+
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .map_err(|e| MeiliBridgeError::Io(e))?
+        {
+            if entry
+                .file_type()
+                .await
                 .map_err(|e| MeiliBridgeError::Io(e))?
-                .is_dir() {
+                .is_dir()
+            {
                 let task_id = entry.file_name();
-                let path = self.get_entry_path(
-                    task_id.to_str().unwrap_or_default(),
-                    id
-                );
-                
+                let path = self.get_entry_path(task_id.to_str().unwrap_or_default(), id);
+
                 if path.exists() {
-                    let content = fs::read_to_string(&path).await
+                    let content = fs::read_to_string(&path)
+                        .await
                         .map_err(|e| MeiliBridgeError::Io(e))?;
                     let dead_letter = serde_json::from_str(&content)?;
                     return Ok(Some(dead_letter));
                 }
             }
         }
-        
+
         Ok(None)
     }
-    
+
     async fn delete(&self, id: &str) -> Result<()> {
         // Find and delete the entry
         if let Some(entry) = self.get(id).await? {
             let path = self.get_entry_path(&entry.task_id, id);
-            fs::remove_file(&path).await
+            fs::remove_file(&path)
+                .await
                 .map_err(|e| MeiliBridgeError::Io(e))?;
             debug!("Deleted dead letter entry {} from {:?}", id, path);
         }
         Ok(())
     }
-    
+
     async fn count_by_task(&self, task_id: &str) -> Result<usize> {
         let task_dir = self.get_task_dir(task_id);
-        
+
         if !task_dir.exists() {
             return Ok(0);
         }
-        
+
         let mut count = 0;
-        let mut dir = fs::read_dir(&task_dir).await
+        let mut dir = fs::read_dir(&task_dir)
+            .await
             .map_err(|e| MeiliBridgeError::Io(e))?;
-        
-        while let Some(entry) = dir.next_entry().await
-            .map_err(|e| MeiliBridgeError::Io(e))? {
+
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .map_err(|e| MeiliBridgeError::Io(e))?
+        {
             if entry.path().extension().map_or(false, |ext| ext == "json") {
                 count += 1;
             }
         }
-        
+
         Ok(count)
     }
-    
+
     async fn list_tasks(&self) -> Result<Vec<String>> {
         let mut tasks = Vec::new();
-        let mut dir = fs::read_dir(&self.base_path).await
+        let mut dir = fs::read_dir(&self.base_path)
+            .await
             .map_err(|e| MeiliBridgeError::Io(e))?;
-        
-        while let Some(entry) = dir.next_entry().await
-            .map_err(|e| MeiliBridgeError::Io(e))? {
-            if entry.file_type().await
+
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .map_err(|e| MeiliBridgeError::Io(e))?
+        {
+            if entry
+                .file_type()
+                .await
                 .map_err(|e| MeiliBridgeError::Io(e))?
-                .is_dir() {
+                .is_dir()
+            {
                 if let Some(name) = entry.file_name().to_str() {
                     tasks.push(name.to_string());
                 }
             }
         }
-        
+
         Ok(tasks)
     }
 }
@@ -314,36 +341,39 @@ impl DeadLetterQueue {
             handle: None,
         }
     }
-    
+
     /// Start the dead letter queue processor
     pub fn start(&mut self) -> mpsc::Receiver<DeadLetterEntry> {
         let (tx, rx) = mpsc::channel(1000);
         self.tx = Some(tx);
-        
+
         let storage = self.storage.clone();
         let handle = tokio::spawn(async move {
             Self::process_entries(storage, rx).await;
         });
-        
+
         self.handle = Some(handle);
-        
+
         // Return a receiver for reprocessing entries
         let (_reprocess_tx, reprocess_rx) = mpsc::channel(100);
         reprocess_rx
     }
-    
+
     /// Send an event to the dead letter queue
     pub async fn send(&self, task_id: String, event: Event, error: String) -> Result<()> {
         if let Some(tx) = &self.tx {
             let entry = DeadLetterEntry::new(task_id, event, error);
-            tx.send(entry).await
+            tx.send(entry)
+                .await
                 .map_err(|_| MeiliBridgeError::ChannelSend)?;
             Ok(())
         } else {
-            Err(MeiliBridgeError::Pipeline("Dead letter queue not started".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "Dead letter queue not started".to_string(),
+            ))
         }
     }
-    
+
     /// Process dead letter entries
     async fn process_entries(
         storage: Arc<dyn DeadLetterStorage>,
@@ -366,30 +396,38 @@ impl DeadLetterQueue {
             }
         }
     }
-    
+
     /// Get statistics for dead letter queue
     pub async fn get_stats(&self) -> Result<Vec<(String, usize)>> {
         let tasks = self.storage.list_tasks().await?;
         let mut stats = Vec::new();
-        
+
         for task in tasks {
             let count = self.storage.count_by_task(&task).await?;
             stats.push((task, count));
         }
-        
+
         Ok(stats)
     }
-    
+
     /// Reprocess entries from dead letter queue
-    pub async fn reprocess_task(&self, task_id: &str, limit: usize) -> Result<Vec<DeadLetterEntry>> {
+    pub async fn reprocess_task(
+        &self,
+        task_id: &str,
+        limit: usize,
+    ) -> Result<Vec<DeadLetterEntry>> {
         let entries = self.storage.get_by_task(task_id, limit).await?;
-        
+
         // Delete entries that will be reprocessed
         for entry in &entries {
             self.storage.delete(&entry.id).await?;
         }
-        
-        info!("Reprocessing {} dead letter entries for task '{}'", entries.len(), task_id);
+
+        info!(
+            "Reprocessing {} dead letter entries for task '{}'",
+            entries.len(),
+            task_id
+        );
         Ok(entries)
     }
 }

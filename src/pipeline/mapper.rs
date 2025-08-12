@@ -23,7 +23,10 @@ impl FieldMapper {
                 if let Some(table_mapping) = self.config.tables.get(&cdc_event.table) {
                     // Apply table name mapping
                     if let Some(new_table_name) = &table_mapping.name {
-                        debug!("Mapping table '{}' to '{}'", cdc_event.table, new_table_name);
+                        debug!(
+                            "Mapping table '{}' to '{}'",
+                            cdc_event.table, new_table_name
+                        );
                         cdc_event.table = new_table_name.clone();
                     }
 
@@ -35,7 +38,10 @@ impl FieldMapper {
 
                 Ok(Event::Cdc(cdc_event))
             }
-            Event::FullSync { mut table, mut data } => {
+            Event::FullSync {
+                mut table,
+                mut data,
+            } => {
                 if let Some(table_mapping) = self.config.tables.get(&table) {
                     // Apply table name mapping
                     if let Some(new_table_name) = &table_mapping.name {
@@ -46,11 +52,9 @@ impl FieldMapper {
                     // Apply field mappings
                     if let Some(field_mappings) = &table_mapping.fields {
                         if let Some(obj) = data.as_object() {
-                            let data_map: HashMap<String, Value> = obj
-                                .iter()
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect();
-                            
+                            let data_map: HashMap<String, Value> =
+                                obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
                             let mapped = self.map_fields(data_map, field_mappings)?;
                             data = Value::Object(mapped.into_iter().collect());
                         }
@@ -82,7 +86,13 @@ impl FieldMapper {
                         mapped_sources.push(source_field.clone());
                     }
                 }
-                crate::config::pipeline::FieldMapping::Complex { to, default, sources, separator, path } => {
+                crate::config::pipeline::FieldMapping::Complex {
+                    to,
+                    default,
+                    sources,
+                    separator,
+                    path,
+                } => {
                     // Handle different complex mapping types
                     if let Some(target_field) = to {
                         if let Some(field_sources) = sources {
@@ -96,17 +106,22 @@ impl FieldMapper {
                             }
                             if !values.is_empty() {
                                 let sep = separator.as_deref().unwrap_or(",");
-                                result.insert(target_field.clone(), Value::String(values.join(sep)));
+                                result
+                                    .insert(target_field.clone(), Value::String(values.join(sep)));
                             }
                         } else if let Some(path_str) = path {
                             // Nested extraction
-                            if let Some(value) = self.extract_nested(&data, source_field, &path_str) {
+                            if let Some(value) = self.extract_nested(&data, source_field, &path_str)
+                            {
                                 result.insert(target_field.clone(), value);
                                 mapped_sources.push(source_field.clone());
                             }
                         } else {
                             // Simple mapping with default
-                            let value = data.get(source_field).cloned().unwrap_or_else(|| default.clone().unwrap_or(Value::Null));
+                            let value = data
+                                .get(source_field)
+                                .cloned()
+                                .unwrap_or_else(|| default.clone().unwrap_or(Value::Null));
                             result.insert(target_field.clone(), value);
                             mapped_sources.push(source_field.clone());
                         }

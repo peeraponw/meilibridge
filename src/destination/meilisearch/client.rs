@@ -13,9 +13,8 @@ pub struct MeilisearchClient {
 
 impl MeilisearchClient {
     pub fn new(config: MeilisearchConfig) -> Result<Self> {
-        let client = Client::new(&config.url, config.api_key.as_deref())
-            .map_err(convert_error)?;
-        
+        let client = Client::new(&config.url, config.api_key.as_deref()).map_err(convert_error)?;
+
         Ok(Self {
             inner: Arc::new(client),
             config,
@@ -30,19 +29,17 @@ impl MeilisearchClient {
     /// Test the connection to Meilisearch
     pub async fn test_connection(&self) -> Result<()> {
         info!("Testing connection to Meilisearch at {}", self.config.url);
-        
+
         match self.inner.health().await {
             Ok(health) => {
                 debug!("Meilisearch health: {:?}", health);
                 info!("Successfully connected to Meilisearch");
                 Ok(())
             }
-            Err(e) => {
-                Err(MeiliBridgeError::Meilisearch(format!(
-                    "Failed to connect to Meilisearch: {}",
-                    e
-                )))
-            }
+            Err(e) => Err(MeiliBridgeError::Meilisearch(format!(
+                "Failed to connect to Meilisearch: {}",
+                e
+            ))),
         }
     }
 

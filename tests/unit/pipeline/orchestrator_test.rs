@@ -1,9 +1,9 @@
-use meilibridge::pipeline::PipelineOrchestrator;
 use meilibridge::config::*;
-use meilibridge::models::Position;
 use meilibridge::error::MeiliBridgeError;
-use std::collections::HashMap;
+use meilibridge::models::Position;
+use meilibridge::pipeline::PipelineOrchestrator;
 use serde_json::Value;
+use std::collections::HashMap;
 
 // Basic test to verify orchestrator creation with minimal config
 #[tokio::test]
@@ -45,9 +45,9 @@ async fn test_orchestrator_creation_no_sources() {
         error_handling: Default::default(),
         plugins: Default::default(),
     };
-    
+
     let orchestrator = PipelineOrchestrator::new(config);
-    
+
     // Expect error because no sources are configured
     assert!(orchestrator.is_err());
     if let Err(e) = orchestrator {
@@ -88,27 +88,25 @@ async fn test_orchestrator_creation_with_single_source() {
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
         },
-        sync_tasks: vec![
-            SyncTaskConfig {
-                id: "task1".to_string(),
-                source_name: "primary".to_string(),
-                table: "users".to_string(),
-                index: "users".to_string(),
-                primary_key: "id".to_string(),
-                full_sync_on_start: Some(false),
-                auto_start: Some(true),
-                filter: None,
-                transform: None,
-                mapping: None,
-                soft_delete: None,
-                options: SyncOptions {
-                    batch_size: 100,
-                    batch_timeout_ms: 1000,
-                    deduplicate: false,
-                    retry: Default::default(),
-                },
+        sync_tasks: vec![SyncTaskConfig {
+            id: "task1".to_string(),
+            source_name: "primary".to_string(),
+            table: "users".to_string(),
+            index: "users".to_string(),
+            primary_key: "id".to_string(),
+            full_sync_on_start: Some(false),
+            auto_start: Some(true),
+            filter: None,
+            transform: None,
+            mapping: None,
+            soft_delete: None,
+            options: SyncOptions {
+                batch_size: 100,
+                batch_timeout_ms: 1000,
+                deduplicate: false,
+                retry: Default::default(),
             },
-        ],
+        }],
         api: Default::default(),
         logging: Default::default(),
         features: Default::default(),
@@ -118,11 +116,11 @@ async fn test_orchestrator_creation_with_single_source() {
         error_handling: Default::default(),
         plugins: Default::default(),
     };
-    
+
     // Add a PostgreSQL source
     config.source = Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
         connection: PostgreSQLConnection::ConnectionString(
-            "postgresql://test:test@localhost:5432/test".to_string()
+            "postgresql://test:test@localhost:5432/test".to_string(),
         ),
         slot_name: "test_slot".to_string(),
         publication: "test_pub".to_string(),
@@ -130,7 +128,7 @@ async fn test_orchestrator_creation_with_single_source() {
         ssl: Default::default(),
         statement_cache: Default::default(),
     }));
-    
+
     let orchestrator = PipelineOrchestrator::new(config);
     assert!(orchestrator.is_ok());
 }
@@ -144,21 +142,19 @@ async fn test_orchestrator_with_multiple_sources() {
             tags: HashMap::new(),
         },
         source: None,
-        sources: vec![
-            NamedSourceConfig {
-                name: "source1".to_string(),
-                config: SourceConfig::PostgreSQL(PostgreSQLConfig {
-                    connection: PostgreSQLConnection::ConnectionString(
-                        "postgresql://test:test@localhost:5432/test1".to_string()
-                    ),
-                    slot_name: "test_slot1".to_string(),
-                    publication: "test_pub1".to_string(),
-                    pool: Default::default(),
-                    ssl: Default::default(),
-                    statement_cache: Default::default(),
-                }),
-            },
-        ],
+        sources: vec![NamedSourceConfig {
+            name: "source1".to_string(),
+            config: SourceConfig::PostgreSQL(PostgreSQLConfig {
+                connection: PostgreSQLConnection::ConnectionString(
+                    "postgresql://test:test@localhost:5432/test1".to_string(),
+                ),
+                slot_name: "test_slot1".to_string(),
+                publication: "test_pub1".to_string(),
+                pool: Default::default(),
+                ssl: Default::default(),
+                statement_cache: Default::default(),
+            }),
+        }],
         meilisearch: MeilisearchConfig {
             url: "http://localhost:7700".to_string(),
             api_key: Some("test".to_string()),
@@ -177,27 +173,25 @@ async fn test_orchestrator_with_multiple_sources() {
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
         },
-        sync_tasks: vec![
-            SyncTaskConfig {
-                id: "task1".to_string(),
-                source_name: "source1".to_string(),
-                table: "users".to_string(),
-                index: "users".to_string(),
-                primary_key: "id".to_string(),
-                full_sync_on_start: Some(false),
-                auto_start: Some(true),
-                filter: None,
-                transform: None,
-                mapping: None,
-                soft_delete: None,
-                options: SyncOptions {
-                    batch_size: 100,
-                    batch_timeout_ms: 1000,
-                    deduplicate: false,
-                    retry: Default::default(),
-                },
+        sync_tasks: vec![SyncTaskConfig {
+            id: "task1".to_string(),
+            source_name: "source1".to_string(),
+            table: "users".to_string(),
+            index: "users".to_string(),
+            primary_key: "id".to_string(),
+            full_sync_on_start: Some(false),
+            auto_start: Some(true),
+            filter: None,
+            transform: None,
+            mapping: None,
+            soft_delete: None,
+            options: SyncOptions {
+                batch_size: 100,
+                batch_timeout_ms: 1000,
+                deduplicate: false,
+                retry: Default::default(),
             },
-        ],
+        }],
         api: Default::default(),
         logging: Default::default(),
         features: Default::default(),
@@ -207,7 +201,7 @@ async fn test_orchestrator_with_multiple_sources() {
         error_handling: Default::default(),
         plugins: Default::default(),
     };
-    
+
     let orchestrator = PipelineOrchestrator::new(config);
     assert!(orchestrator.is_ok());
 }
@@ -222,7 +216,7 @@ async fn test_orchestrator_with_filters() {
         },
         source: Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
             connection: PostgreSQLConnection::ConnectionString(
-                "postgresql://test:test@localhost:5432/test".to_string()
+                "postgresql://test:test@localhost:5432/test".to_string(),
             ),
             slot_name: "test_slot".to_string(),
             publication: "test_pub".to_string(),
@@ -249,27 +243,25 @@ async fn test_orchestrator_with_filters() {
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
         },
-        sync_tasks: vec![
-            SyncTaskConfig {
-                id: "task1".to_string(),
-                source_name: "primary".to_string(),
-                table: "users".to_string(),
-                index: "users".to_string(),
-                primary_key: "id".to_string(),
-                full_sync_on_start: Some(false),
-                auto_start: Some(true),
-                filter: None,
-                transform: None,
-                mapping: None,
-                soft_delete: None,
-                options: SyncOptions {
-                    batch_size: 100,
-                    batch_timeout_ms: 1000,
-                    deduplicate: false,
-                    retry: Default::default(),
-                },
+        sync_tasks: vec![SyncTaskConfig {
+            id: "task1".to_string(),
+            source_name: "primary".to_string(),
+            table: "users".to_string(),
+            index: "users".to_string(),
+            primary_key: "id".to_string(),
+            full_sync_on_start: Some(false),
+            auto_start: Some(true),
+            filter: None,
+            transform: None,
+            mapping: None,
+            soft_delete: None,
+            options: SyncOptions {
+                batch_size: 100,
+                batch_timeout_ms: 1000,
+                deduplicate: false,
+                retry: Default::default(),
             },
-        ],
+        }],
         api: Default::default(),
         logging: Default::default(),
         features: Default::default(),
@@ -279,7 +271,7 @@ async fn test_orchestrator_with_filters() {
         error_handling: Default::default(),
         plugins: Default::default(),
     };
-    
+
     // Add filter configuration
     config.sync_tasks[0].filter = Some(FilterConfig {
         tables: TableFilter {
@@ -289,7 +281,7 @@ async fn test_orchestrator_with_filters() {
         event_types: Some(vec!["create".to_string(), "update".to_string()]),
         conditions: Some(vec![]),
     });
-    
+
     let orchestrator = PipelineOrchestrator::new(config);
     assert!(orchestrator.is_ok());
 }
@@ -304,7 +296,7 @@ async fn test_orchestrator_with_soft_delete() {
         },
         source: Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
             connection: PostgreSQLConnection::ConnectionString(
-                "postgresql://test:test@localhost:5432/test".to_string()
+                "postgresql://test:test@localhost:5432/test".to_string(),
             ),
             slot_name: "test_slot".to_string(),
             publication: "test_pub".to_string(),
@@ -331,27 +323,25 @@ async fn test_orchestrator_with_soft_delete() {
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
         },
-        sync_tasks: vec![
-            SyncTaskConfig {
-                id: "task1".to_string(),
-                source_name: "primary".to_string(),
-                table: "users".to_string(),
-                index: "users".to_string(),
-                primary_key: "id".to_string(),
-                full_sync_on_start: Some(false),
-                auto_start: Some(true),
-                filter: None,
-                transform: None,
-                mapping: None,
-                soft_delete: None,
-                options: SyncOptions {
-                    batch_size: 100,
-                    batch_timeout_ms: 1000,
-                    deduplicate: false,
-                    retry: Default::default(),
-                },
+        sync_tasks: vec![SyncTaskConfig {
+            id: "task1".to_string(),
+            source_name: "primary".to_string(),
+            table: "users".to_string(),
+            index: "users".to_string(),
+            primary_key: "id".to_string(),
+            full_sync_on_start: Some(false),
+            auto_start: Some(true),
+            filter: None,
+            transform: None,
+            mapping: None,
+            soft_delete: None,
+            options: SyncOptions {
+                batch_size: 100,
+                batch_timeout_ms: 1000,
+                deduplicate: false,
+                retry: Default::default(),
             },
-        ],
+        }],
         api: Default::default(),
         logging: Default::default(),
         features: Default::default(),
@@ -361,7 +351,7 @@ async fn test_orchestrator_with_soft_delete() {
         error_handling: Default::default(),
         plugins: Default::default(),
     };
-    
+
     // Add soft delete configuration
     config.sync_tasks[0].soft_delete = Some(SoftDeleteConfig {
         field: "deleted_at".to_string(),
@@ -369,7 +359,7 @@ async fn test_orchestrator_with_soft_delete() {
         handle_on_full_sync: true,
         handle_on_cdc: true,
     });
-    
+
     let orchestrator = PipelineOrchestrator::new(config);
     assert!(orchestrator.is_ok());
 }
@@ -384,7 +374,7 @@ async fn test_dlq_operations() {
         },
         source: Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
             connection: PostgreSQLConnection::ConnectionString(
-                "postgresql://test:test@localhost:5432/test".to_string()
+                "postgresql://test:test@localhost:5432/test".to_string(),
             ),
             slot_name: "test_slot".to_string(),
             publication: "test_pub".to_string(),
@@ -411,27 +401,25 @@ async fn test_dlq_operations() {
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
         },
-        sync_tasks: vec![
-            SyncTaskConfig {
-                id: "task1".to_string(),
-                source_name: "primary".to_string(),
-                table: "users".to_string(),
-                index: "users".to_string(),
-                primary_key: "id".to_string(),
-                full_sync_on_start: Some(false),
-                auto_start: Some(true),
-                filter: None,
-                transform: None,
-                mapping: None,
-                soft_delete: None,
-                options: SyncOptions {
-                    batch_size: 100,
-                    batch_timeout_ms: 1000,
-                    deduplicate: false,
-                    retry: Default::default(),
-                },
+        sync_tasks: vec![SyncTaskConfig {
+            id: "task1".to_string(),
+            source_name: "primary".to_string(),
+            table: "users".to_string(),
+            index: "users".to_string(),
+            primary_key: "id".to_string(),
+            full_sync_on_start: Some(false),
+            auto_start: Some(true),
+            filter: None,
+            transform: None,
+            mapping: None,
+            soft_delete: None,
+            options: SyncOptions {
+                batch_size: 100,
+                batch_timeout_ms: 1000,
+                deduplicate: false,
+                retry: Default::default(),
             },
-        ],
+        }],
         api: Default::default(),
         logging: Default::default(),
         features: Default::default(),
@@ -441,31 +429,34 @@ async fn test_dlq_operations() {
         error_handling: Default::default(),
         plugins: Default::default(),
     };
-    
+
     let orchestrator = PipelineOrchestrator::new(config).unwrap();
-    
+
     // DLQ operations should fail before starting
     assert!(orchestrator.get_dlq_statistics().await.is_err());
-    assert!(orchestrator.reprocess_dlq_entries("task1", Some(10)).await.is_err());
+    assert!(orchestrator
+        .reprocess_dlq_entries("task1", Some(10))
+        .await
+        .is_err());
     assert!(orchestrator.clear_dlq_task("task1").await.is_err());
 }
 
 #[tokio::test]
 async fn test_position_variants() {
     // Test different position types
-    let pg_position = Position::PostgreSQL { 
-        lsn: "0/16B3748".to_string(), 
+    let pg_position = Position::PostgreSQL {
+        lsn: "0/16B3748".to_string(),
     };
-    
-    let mysql_position = Position::MySQL { 
-        file: "mysql-bin.000001".to_string(), 
+
+    let mysql_position = Position::MySQL {
+        file: "mysql-bin.000001".to_string(),
         position: 154,
     };
-    
-    let mongodb_position = Position::MongoDB { 
+
+    let mongodb_position = Position::MongoDB {
         resume_token: "82507632F7000000012B022C0100296E5A10040".to_string(),
     };
-    
+
     // Just verify they can be created
     assert!(matches!(pg_position, Position::PostgreSQL { .. }));
     assert!(matches!(mysql_position, Position::MySQL { .. }));

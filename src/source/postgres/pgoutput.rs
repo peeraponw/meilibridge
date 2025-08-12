@@ -128,15 +128,20 @@ impl PgOutputParser {
             b'O' => Ok(Some(PgOutputMessage::Origin(self.parse_origin(payload)?))),
             b'R' => {
                 let relation = self.parse_relation(payload)?;
-                self.relations.insert(relation.relation_id, relation.clone());
+                self.relations
+                    .insert(relation.relation_id, relation.clone());
                 Ok(Some(PgOutputMessage::Relation(relation)))
             }
             b'Y' => Ok(Some(PgOutputMessage::Type(self.parse_type(payload)?))),
             b'I' => Ok(Some(PgOutputMessage::Insert(self.parse_insert(payload)?))),
             b'U' => Ok(Some(PgOutputMessage::Update(self.parse_update(payload)?))),
             b'D' => Ok(Some(PgOutputMessage::Delete(self.parse_delete(payload)?))),
-            b'T' => Ok(Some(PgOutputMessage::Truncate(self.parse_truncate(payload)?))),
-            b'k' => Ok(Some(PgOutputMessage::Keepalive(self.parse_keepalive(payload)?))),
+            b'T' => Ok(Some(PgOutputMessage::Truncate(
+                self.parse_truncate(payload)?,
+            ))),
+            b'k' => Ok(Some(PgOutputMessage::Keepalive(
+                self.parse_keepalive(payload)?,
+            ))),
             _ => {
                 debug!("Unknown pgoutput message type: {}", msg_type as char);
                 Ok(None)
@@ -239,10 +244,7 @@ impl PgOutputParser {
 
         let tuple = self.parse_tuple_data(&mut cursor)?;
 
-        Ok(InsertMessage {
-            relation_id,
-            tuple,
-        })
+        Ok(InsertMessage { relation_id, tuple })
     }
 
     fn parse_update(&self, data: &[u8]) -> Result<UpdateMessage> {
@@ -384,5 +386,3 @@ impl Default for PgOutputParser {
         Self::new()
     }
 }
-
-

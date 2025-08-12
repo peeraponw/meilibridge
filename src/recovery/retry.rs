@@ -84,9 +84,9 @@ impl ExponentialBackoff {
         }
 
         self.current_retry += 1;
-        
+
         let mut delay = self.current_delay;
-        
+
         // Apply jitter if enabled
         if self.policy.jitter {
             use rand::Rng;
@@ -185,7 +185,7 @@ impl RetryManager {
                         );
                         return Err(error);
                     }
-                    
+
                     if let Some(delay) = backoff.next_delay() {
                         warn!(
                             "Operation '{}' failed (retry {}/{}), retrying in {:?}",

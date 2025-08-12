@@ -109,10 +109,23 @@ pub enum FieldMapping {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FieldTransform {
-    Rename { from: String, to: String },
-    Convert { field: String, to_type: String },
-    Extract { from: String, path: String, to: String },
-    Compute { expression: String, to: String },
+    Rename {
+        from: String,
+        to: String,
+    },
+    Convert {
+        field: String,
+        to_type: String,
+    },
+    Extract {
+        from: String,
+        path: String,
+        to: String,
+    },
+    Compute {
+        expression: String,
+        to: String,
+    },
 }
 
 /// Global transformation types

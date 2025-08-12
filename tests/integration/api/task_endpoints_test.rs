@@ -1,9 +1,9 @@
 // Task management API endpoints integration tests
 
-use meilibridge::sync::task_manager::{SyncTaskManager, TaskStatus, TaskState};
-use meilibridge::pipeline::orchestrator::PipelineOrchestrator;
-use meilibridge::config::SyncTaskConfig;
 use crate::common::fixtures::*;
+use meilibridge::config::SyncTaskConfig;
+use meilibridge::pipeline::orchestrator::PipelineOrchestrator;
+use meilibridge::sync::task_manager::{SyncTaskManager, TaskState, TaskStatus};
 
 #[cfg(test)]
 mod task_endpoints_tests {
@@ -12,7 +12,7 @@ mod task_endpoints_tests {
     #[tokio::test]
     async fn test_task_status_structure() {
         // Test TaskStatus structure without needing API
-        
+
         // Create a sample task status
         let status = TaskStatus {
             task_id: "test_task".to_string(),
@@ -25,7 +25,7 @@ mod task_endpoints_tests {
             started_at: chrono::Utc::now(),
             last_updated: chrono::Utc::now(),
         };
-        
+
         // Convert to response format
         let response = meilibridge::api::handlers::TaskStatusResponse {
             id: status.task_id.clone(),
@@ -35,7 +35,7 @@ mod task_endpoints_tests {
             last_error: status.last_error.clone(),
             last_sync_at: Some(status.last_updated.to_rfc3339()),
         };
-        
+
         assert_eq!(response.id, "test_task");
         assert_eq!(response.status, "Idle");
         assert_eq!(response.table, "test_table");
@@ -60,7 +60,7 @@ mod task_endpoints_tests {
             soft_delete: None,
             options: Default::default(),
         };
-        
+
         assert_eq!(task_config.id, "new_task");
         assert_eq!(task_config.table, "products");
         assert_eq!(task_config.index, "products_index");
@@ -72,7 +72,7 @@ mod task_endpoints_tests {
     #[tokio::test]
     async fn test_task_state_transitions() {
         use meilibridge::sync::task_manager::TaskState;
-        
+
         // Test all task state variants
         let states = vec![
             TaskState::Idle,
@@ -81,7 +81,7 @@ mod task_endpoints_tests {
             TaskState::Paused,
             TaskState::Completed,
         ];
-        
+
         for state in states {
             let state_str = format!("{:?}", state);
             assert!(!state_str.is_empty());
@@ -93,10 +93,10 @@ mod task_endpoints_tests {
         let config = create_test_config(
             "postgres://localhost:5432/test",
             "http://localhost:7700",
-            "redis://localhost:6379"
+            "redis://localhost:6379",
         );
         let task_manager = SyncTaskManager::new(config);
-        
+
         // Task manager should start without command channel
         assert!(task_manager.command_tx.is_none());
     }
@@ -106,13 +106,13 @@ mod task_endpoints_tests {
         let config = create_test_config(
             "postgres://localhost:5432/test",
             "http://localhost:7700",
-            "redis://localhost:6379"
+            "redis://localhost:6379",
         );
         let orchestrator = PipelineOrchestrator::new(config);
-        
+
         assert!(orchestrator.is_ok());
         let _orchestrator = orchestrator.unwrap();
-        
+
         // Orchestrator created successfully
         assert!(true);
     }

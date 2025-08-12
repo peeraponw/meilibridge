@@ -51,7 +51,11 @@ pub trait DestinationAdapter: Send + Sync {
     async fn process_events(&mut self, events: Vec<Event>) -> Result<SyncResult>;
 
     /// Create or update an index
-    async fn ensure_index(&mut self, index_name: &str, schema: Option<HashMap<String, Value>>) -> Result<()>;
+    async fn ensure_index(
+        &mut self,
+        index_name: &str,
+        schema: Option<HashMap<String, Value>>,
+    ) -> Result<()>;
 
     /// Perform a full data import
     async fn import_data(
@@ -72,7 +76,7 @@ pub trait DestinationAdapter: Send + Sync {
 
     /// Check if the destination is healthy
     async fn health_check(&self) -> Result<bool>;
-    
+
     /// Check if the destination is healthy (alias for health_check)
     async fn is_healthy(&self) -> bool {
         self.health_check().await.unwrap_or(false)

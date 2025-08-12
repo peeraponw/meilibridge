@@ -1,5 +1,5 @@
+use crate::error::retry::{with_retry, RetryConfig, Retryable};
 use crate::error::MeiliBridgeError;
-use crate::error::retry::{Retryable, RetryConfig, with_retry};
 use deadpool_postgres::Pool;
 use tokio_postgres::Client;
 use tracing::debug;
@@ -16,11 +16,14 @@ impl PostgresRetryHelper {
         operation_name: &str,
     ) -> Result<Vec<tokio_postgres::Row>, MeiliBridgeError> {
         let config = RetryConfig::default();
-        
+
         with_retry(&config, operation_name, || async {
-            client.query(query, params).await
+            client
+                .query(query, params)
+                .await
                 .map_err(|e| PostgresRetryError::Postgres(e))
-        }).await
+        })
+        .await
     }
 
     /// Get a client from pool with retry logic
@@ -35,14 +38,16 @@ impl PostgresRetryHelper {
             multiplier: 2.0,
             jitter: true,
         };
-        
+
         with_retry(&config, operation_name, || async {
-            pool.get().await
-                .map_err(|e| match e {
-                    deadpool_postgres::PoolError::Backend(backend_err) => PostgresRetryError::Postgres(backend_err),
-                    e => PostgresRetryError::Pool(e.to_string()),
-                })
-        }).await
+            pool.get().await.map_err(|e| match e {
+                deadpool_postgres::PoolError::Backend(backend_err) => {
+                    PostgresRetryError::Postgres(backend_err)
+                }
+                e => PostgresRetryError::Pool(e.to_string()),
+            })
+        })
+        .await
     }
 
     /// Execute a transaction with retry logic
@@ -62,23 +67,28 @@ impl PostgresRetryHelper {
             multiplier: 2.0,
             jitter: true,
         };
-        
+
         let transaction_fn = transaction_fn.clone();
         with_retry(&config, operation_name, move || {
             let mut transaction_fn = transaction_fn.clone();
             async move {
-                let mut client = pool.get().await
-                    .map_err(|e| match e {
-                        deadpool_postgres::PoolError::Backend(backend_err) => PostgresRetryError::Postgres(backend_err),
-                        e => PostgresRetryError::Pool(e.to_string()),
-                    })?;
-                    
-                let mut transaction = client.transaction().await
+                let mut client = pool.get().await.map_err(|e| match e {
+                    deadpool_postgres::PoolError::Backend(backend_err) => {
+                        PostgresRetryError::Postgres(backend_err)
+                    }
+                    e => PostgresRetryError::Pool(e.to_string()),
+                })?;
+
+                let mut transaction = client
+                    .transaction()
+                    .await
                     .map_err(|e| PostgresRetryError::Postgres(e))?;
-                
+
                 match transaction_fn(&mut transaction).await {
                     Ok(result) => {
-                        transaction.commit().await
+                        transaction
+                            .commit()
+                            .await
                             .map_err(|e| PostgresRetryError::Postgres(e))?;
                         Ok(result)
                     }
@@ -89,7 +99,8 @@ impl PostgresRetryHelper {
                     }
                 }
             }
-        }).await
+        })
+        .await
     }
 }
 
@@ -132,4 +143,3 @@ impl From<PostgresRetryError> for MeiliBridgeError {
         MeiliBridgeError::Database(err.to_string())
     }
 }
-

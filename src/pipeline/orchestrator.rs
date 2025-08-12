@@ -2,30 +2,39 @@ use crate::checkpoint::{CheckpointManager, CheckpointStorage, MemoryStorage, Red
 use crate::config::{Config, SyncTaskConfig};
 use crate::destination::adapter::DestinationAdapter;
 use crate::destination::meilisearch::MeilisearchAdapter;
-use crate::pipeline::{AdaptiveBatchingManager, MemoryMonitor};
 use crate::dlq::{DeadLetterQueue, DlqStorage, InMemoryDlqStorage, RedisDlqStorage};
 use crate::error::{MeiliBridgeError, Result};
 use crate::metrics;
+use crate::models::event::{
+    Event as ModelsEvent, EventData as ModelsEventData, EventType as ModelsEventType,
+};
 use crate::models::{stream_event::Event, Position};
-use crate::models::event::{Event as ModelsEvent, EventType as ModelsEventType, EventData as ModelsEventData};
-use crate::models::{EventId, EventSource, EventMetadata};
-use crate::pipeline::{filter::EventFilter, mapper::FieldMapper, transformer::EventTransformer, soft_delete::SoftDeleteHandler, CdcCoordinator, ParallelTableProcessor, WorkStealingCoordinator};
+use crate::models::{EventId, EventMetadata, EventSource};
+use crate::pipeline::{
+    filter::EventFilter, mapper::FieldMapper, soft_delete::SoftDeleteHandler,
+    transformer::EventTransformer, CdcCoordinator, ParallelTableProcessor, WorkStealingCoordinator,
+};
+use crate::pipeline::{AdaptiveBatchingManager, MemoryMonitor};
 use crate::source::adapter::SourceAdapter;
 use crate::source::postgres::PostgresAdapter;
+use chrono::Utc;
 use futures::StreamExt;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch, RwLock};
-use serde_json::Value;
 use tokio::time::{interval, Duration};
-use tracing::{debug, error, info, warn, trace};
-use chrono::Utc;
+use tracing::{debug, error, info, trace, warn};
 
 /// Convert stream event to models event for dead letter queue
 fn convert_to_models_event(event: Event) -> ModelsEvent {
     let (event_type, source, data) = match event {
         Event::Cdc(cdc_event) => {
-            let key = cdc_event.data.get("id").cloned().unwrap_or(serde_json::Value::Null);
+            let key = cdc_event
+                .data
+                .get("id")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             (
                 cdc_event.event_type,
                 EventSource {
@@ -39,9 +48,16 @@ fn convert_to_models_event(event: Event) -> ModelsEvent {
                     new: Some(cdc_event.data),
                 },
             )
-        },
-        Event::Insert { table, new_data, position: _ } => {
-            let key = new_data.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        }
+        Event::Insert {
+            table,
+            new_data,
+            position: _,
+        } => {
+            let key = new_data
+                .get("id")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             (
                 ModelsEventType::Create,
                 EventSource {
@@ -55,9 +71,17 @@ fn convert_to_models_event(event: Event) -> ModelsEvent {
                     new: Some(new_data.as_object().unwrap().clone().into_iter().collect()),
                 },
             )
-        },
-        Event::Update { table, old_data, new_data, position: _ } => {
-            let key = new_data.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        }
+        Event::Update {
+            table,
+            old_data,
+            new_data,
+            position: _,
+        } => {
+            let key = new_data
+                .get("id")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             (
                 ModelsEventType::Update,
                 EventSource {
@@ -67,13 +91,22 @@ fn convert_to_models_event(event: Event) -> ModelsEvent {
                 },
                 ModelsEventData {
                     key,
-                    old: old_data.as_object().map(|o| o.clone().into_iter().collect()),
+                    old: old_data
+                        .as_object()
+                        .map(|o| o.clone().into_iter().collect()),
                     new: Some(new_data.as_object().unwrap().clone().into_iter().collect()),
                 },
             )
-        },
-        Event::Delete { table, old_data, position: _ } => {
-            let key = old_data.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        }
+        Event::Delete {
+            table,
+            old_data,
+            position: _,
+        } => {
+            let key = old_data
+                .get("id")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             (
                 ModelsEventType::Delete,
                 EventSource {
@@ -87,7 +120,7 @@ fn convert_to_models_event(event: Event) -> ModelsEvent {
                     new: None,
                 },
             )
-        },
+        }
         Event::FullSync { table, data } => {
             let key = data.get("id").cloned().unwrap_or(serde_json::Value::Null);
             (
@@ -103,7 +136,7 @@ fn convert_to_models_event(event: Event) -> ModelsEvent {
                     new: Some(data.as_object().unwrap().clone().into_iter().collect()),
                 },
             )
-        },
+        }
         Event::Checkpoint(_) | Event::Heartbeat => {
             // These are control events, not data events
             // Create a placeholder event for the dead letter queue
@@ -120,9 +153,9 @@ fn convert_to_models_event(event: Event) -> ModelsEvent {
                     new: None,
                 },
             )
-        },
+        }
     };
-    
+
     ModelsEvent {
         id: EventId::new(),
         event_type,
@@ -142,8 +175,15 @@ fn convert_to_models_event(event: Event) -> ModelsEvent {
 #[allow(dead_code)]
 enum DestinationCommand {
     ProcessEvents(Vec<Event>),
-    ImportData { index: String, documents: Vec<Value>, primary_key: Option<String> },
-    EnsureIndex { index_name: String, primary_key: Option<String> },
+    ImportData {
+        index: String,
+        documents: Vec<Value>,
+        primary_key: Option<String>,
+    },
+    EnsureIndex {
+        index_name: String,
+        primary_key: Option<String>,
+    },
     HealthCheck,
     Shutdown,
 }
@@ -161,7 +201,12 @@ struct DestinationResponse {
 pub struct PipelineOrchestrator {
     pub(crate) config: Config,
     source_adapters: HashMap<String, Box<dyn SourceAdapter>>,
-    destination_tx: Option<mpsc::Sender<(DestinationCommand, mpsc::Sender<Result<DestinationResponse>>)>>,
+    destination_tx: Option<
+        mpsc::Sender<(
+            DestinationCommand,
+            mpsc::Sender<Result<DestinationResponse>>,
+        )>,
+    >,
     filters: HashMap<String, EventFilter>,
     transformers: HashMap<String, EventTransformer>,
     mappers: HashMap<String, FieldMapper>,
@@ -187,23 +232,24 @@ pub struct PipelineOrchestrator {
 impl PipelineOrchestrator {
     pub fn new(config: Config) -> Result<Self> {
         let mut source_adapters = HashMap::new();
-        
+
         // Handle backward compatibility - single source configuration
         if let Some(source_config) = &config.source {
             let source_adapter = Self::create_source_adapter(source_config)?;
             source_adapters.insert("primary".to_string(), source_adapter);
         }
-        
+
         // Handle multiple sources
         for named_source in &config.sources {
             let source_adapter = Self::create_source_adapter(&named_source.config)?;
             source_adapters.insert(named_source.name.clone(), source_adapter);
         }
-        
+
         // Validate we have at least one source
         if source_adapters.is_empty() {
             return Err(MeiliBridgeError::Configuration(
-                "No data sources configured. Use either 'source' or 'sources' configuration".to_string()
+                "No data sources configured. Use either 'source' or 'sources' configuration"
+                    .to_string(),
             ));
         }
 
@@ -217,20 +263,23 @@ impl PipelineOrchestrator {
             if let Some(filter_config) = &task.filter {
                 filters.insert(task.table.clone(), EventFilter::new(filter_config.clone()));
             }
-            
+
             if let Some(transform_config) = &task.transform {
                 transformers.insert(
                     task.table.clone(),
                     EventTransformer::new(transform_config.clone()),
                 );
             }
-            
+
             if let Some(mapping_config) = &task.mapping {
                 mappers.insert(task.table.clone(), FieldMapper::new(mapping_config.clone()));
             }
-            
+
             if let Some(soft_delete_config) = &task.soft_delete {
-                soft_delete_handlers.insert(task.table.clone(), SoftDeleteHandler::new(soft_delete_config.clone()));
+                soft_delete_handlers.insert(
+                    task.table.clone(),
+                    SoftDeleteHandler::new(soft_delete_config.clone()),
+                );
             }
         }
 
@@ -261,17 +310,19 @@ impl PipelineOrchestrator {
     }
 
     /// Create a source adapter from configuration
-    fn create_source_adapter(source_config: &crate::config::SourceConfig) -> Result<Box<dyn SourceAdapter>> {
+    fn create_source_adapter(
+        source_config: &crate::config::SourceConfig,
+    ) -> Result<Box<dyn SourceAdapter>> {
         match source_config {
             crate::config::SourceConfig::PostgreSQL(pg_config) => {
                 Ok(Box::new(PostgresAdapter::new(pg_config.clone())) as Box<dyn SourceAdapter>)
             }
-            crate::config::SourceConfig::MySQL(_) => {
-                Err(MeiliBridgeError::Configuration("MySQL source not yet implemented".to_string()))
-            }
-            crate::config::SourceConfig::MongoDB(_) => {
-                Err(MeiliBridgeError::Configuration("MongoDB source not yet implemented".to_string()))
-            }
+            crate::config::SourceConfig::MySQL(_) => Err(MeiliBridgeError::Configuration(
+                "MySQL source not yet implemented".to_string(),
+            )),
+            crate::config::SourceConfig::MongoDB(_) => Err(MeiliBridgeError::Configuration(
+                "MongoDB source not yet implemented".to_string(),
+            )),
         }
     }
 
@@ -282,20 +333,23 @@ impl PipelineOrchestrator {
         // Initialize dead letter queue
         let dlq_storage: Arc<dyn DlqStorage> = if !self.config.redis.url.is_empty() {
             info!("Using Redis-based dead letter queue");
-            Arc::new(RedisDlqStorage::new(&self.config.redis.url, self.config.redis.key_prefix.clone())?)
+            Arc::new(RedisDlqStorage::new(
+                &self.config.redis.url,
+                self.config.redis.key_prefix.clone(),
+            )?)
         } else {
             info!("Using in-memory dead letter queue");
             Arc::new(InMemoryDlqStorage::new())
         };
-        
+
         let mut dlq = DeadLetterQueue::new(dlq_storage);
-        
+
         // Set up reprocess channel
         let (reprocess_tx, reprocess_rx) = mpsc::channel(100);
         dlq.set_reprocess_channel(reprocess_tx);
         self.dlq_reprocess_rx = Some(reprocess_rx);
         self.dead_letter_queue = Some(Arc::new(dlq));
-        
+
         // Initialize checkpoint manager
         let checkpoint_storage: Arc<dyn CheckpointStorage> = if !self.config.redis.url.is_empty() {
             info!("Using Redis-based checkpoint storage");
@@ -306,31 +360,39 @@ impl PipelineOrchestrator {
             info!("Using in-memory checkpoint storage");
             Arc::new(MemoryStorage::new())
         };
-        
+
         let flush_interval = Duration::from_secs(30); // Flush checkpoints every 30 seconds
         let batch_size = 10; // Flush after 10 checkpoints
-        let mut checkpoint_manager = CheckpointManager::new(checkpoint_storage.clone(), flush_interval, batch_size);
+        let mut checkpoint_manager =
+            CheckpointManager::new(checkpoint_storage.clone(), flush_interval, batch_size);
         checkpoint_manager.start().await?;
         self.checkpoint_manager = Some(Arc::new(checkpoint_manager));
-        
+
         // Initialize exactly-once delivery if enabled
         if self.config.exactly_once_delivery.enabled {
             info!("Initializing exactly-once delivery guarantees");
-            
+
             // Create exactly-once manager
             let exactly_once_config = crate::delivery::ExactlyOnceConfig {
                 enabled: self.config.exactly_once_delivery.enabled,
                 deduplication_window: self.config.exactly_once_delivery.deduplication_window,
-                transaction_timeout_secs: self.config.exactly_once_delivery.transaction_timeout_secs,
+                transaction_timeout_secs: self
+                    .config
+                    .exactly_once_delivery
+                    .transaction_timeout_secs,
                 two_phase_commit: self.config.exactly_once_delivery.two_phase_commit,
                 checkpoint_before_write: self.config.exactly_once_delivery.checkpoint_before_write,
             };
-            
-            let exactly_once_manager = Arc::new(crate::delivery::ExactlyOnceManager::new(exactly_once_config));
-            
+
+            let exactly_once_manager = Arc::new(crate::delivery::ExactlyOnceManager::new(
+                exactly_once_config,
+            ));
+
             // Create transactional checkpoint
-            let transactional_checkpoint = Arc::new(crate::delivery::TransactionalCheckpoint::new(checkpoint_storage));
-            
+            let transactional_checkpoint = Arc::new(crate::delivery::TransactionalCheckpoint::new(
+                checkpoint_storage,
+            ));
+
             // Set up transaction coordinator
             let coordinator = exactly_once_manager.transaction_coordinator.clone();
             let checkpoint_clone = transactional_checkpoint.clone();
@@ -340,7 +402,7 @@ impl PipelineOrchestrator {
                 coordinator.run_cleanup_task().await;
             });
             self.task_handles.push(coordinator_handle);
-            
+
             self.exactly_once_manager = Some(exactly_once_manager);
             self.transactional_checkpoint = Some(transactional_checkpoint);
         }
@@ -357,12 +419,12 @@ impl PipelineOrchestrator {
                 self.config.performance.memory.max_queue_memory_mb,
                 self.config.performance.memory.max_checkpoint_memory_mb,
             );
-            
+
             // Start monitoring in background
             let memory_pressure_rx = monitor.start_monitoring();
             let monitor_arc = Arc::new(monitor);
             self.memory_monitor = Some(monitor_arc.clone());
-            
+
             // Handle memory pressure events
             let handle = tokio::spawn(async move {
                 let mut rx = memory_pressure_rx;
@@ -381,57 +443,64 @@ impl PipelineOrchestrator {
             });
             self.task_handles.push(handle);
         }
-        
+
         // Create adaptive batching manager if enabled
         if self.config.performance.batch_processing.adaptive_batching {
             let manager = Arc::new(AdaptiveBatchingManager::new(
-                self.config.performance.batch_processing.adaptive_config.clone()
+                self.config
+                    .performance
+                    .batch_processing
+                    .adaptive_config
+                    .clone(),
             ));
             self.adaptive_batching_manager = Some(manager.clone());
         }
-        
+
         // Start destination processor
         let (tx, rx) = mpsc::channel(100);
         self.destination_tx = Some(tx);
-        
+
         let config = self.config.clone();
         let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
         let adaptive_manager = self.adaptive_batching_manager.clone();
-        
+
         let destination_handle = tokio::spawn(async move {
             Self::run_destination_processor(config, rx, shutdown_rx, adaptive_manager).await;
         });
-        
+
         self.task_handles.push(destination_handle);
 
         // Group sync tasks by source
         let mut tasks_by_source: HashMap<String, Vec<SyncTaskConfig>> = HashMap::new();
         for task in &self.config.sync_tasks {
-            tasks_by_source.entry(task.source_name.clone())
+            tasks_by_source
+                .entry(task.source_name.clone())
                 .or_insert_with(Vec::new)
                 .push(task.clone());
         }
-        
+
         // Create CDC coordinators for each source that has sync tasks
         let mut all_task_receivers = Vec::new();
         let mut cdc_coordinators: HashMap<String, Arc<RwLock<CdcCoordinator>>> = HashMap::new();
-        
+
         for (source_name, tasks) in tasks_by_source {
             // Get the source adapter
-            let source_adapter = self.source_adapters.get_mut(&source_name)
-                .ok_or_else(|| MeiliBridgeError::Pipeline(
-                    format!("Source adapter '{}' not found for sync tasks", source_name)
-                ))?;
-            
+            let source_adapter = self.source_adapters.get_mut(&source_name).ok_or_else(|| {
+                MeiliBridgeError::Pipeline(format!(
+                    "Source adapter '{}' not found for sync tasks",
+                    source_name
+                ))
+            })?;
+
             // Clone the adapter for CDC coordinator (shares the connection pool)
             let mut cdc_adapter = source_adapter.clone_box();
-            
+
             // Ensure the cloned adapter is connected
             cdc_adapter.connect().await?;
-            
+
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
             let mut cdc_coordinator = CdcCoordinator::new(cdc_adapter, shutdown_rx);
-            
+
             // Register tasks with this coordinator
             let mut task_receivers = Vec::new();
             for task in tasks {
@@ -439,13 +508,13 @@ impl PipelineOrchestrator {
                 cdc_coordinator.register_task(task.table.clone(), tx);
                 task_receivers.push((task, rx));
             }
-            
+
             all_task_receivers.extend(task_receivers);
-            
+
             // Store the CDC coordinator in an Arc<RwLock> for shared access
             let coordinator_arc = Arc::new(RwLock::new(cdc_coordinator));
             cdc_coordinators.insert(source_name.clone(), coordinator_arc.clone());
-            
+
             // Start the CDC coordinator
             let coordinator_for_task = coordinator_arc.clone();
             let source_name_for_log = source_name.clone();
@@ -454,35 +523,51 @@ impl PipelineOrchestrator {
                 // This is okay because other methods only need read access for control operations
                 let mut coordinator = coordinator_for_task.write().await;
                 if let Err(e) = coordinator.run().await {
-                    error!("CDC coordinator error for source '{}': {}", source_name_for_log, e);
+                    error!(
+                        "CDC coordinator error for source '{}': {}",
+                        source_name_for_log, e
+                    );
                 }
             });
             self.task_handles.push(coordinator_handle);
-            
+
             info!("Started CDC coordinator for source '{}'", source_name);
         }
-        
+
         // Store the primary CDC coordinator for backward compatibility
         if let Some(primary_coordinator) = cdc_coordinators.get("primary") {
             self.cdc_coordinator = Some(primary_coordinator.clone());
         }
-        
+
         // Initialize work stealing coordinator if enabled
-        if self.config.performance.parallel_processing.enabled && 
-           self.config.performance.parallel_processing.work_stealing {
+        if self.config.performance.parallel_processing.enabled
+            && self.config.performance.parallel_processing.work_stealing
+        {
             let parallel_config = crate::pipeline::parallel_processor::ParallelConfig {
-                workers_per_table: self.config.performance.parallel_processing.workers_per_table,
-                max_concurrent_events: self.config.performance.parallel_processing.max_concurrent_events,
+                workers_per_table: self
+                    .config
+                    .performance
+                    .parallel_processing
+                    .workers_per_table,
+                max_concurrent_events: self
+                    .config
+                    .performance
+                    .parallel_processing
+                    .max_concurrent_events,
                 work_stealing: self.config.performance.parallel_processing.work_stealing,
-                steal_interval_ms: self.config.performance.parallel_processing.work_steal_interval_ms,
+                steal_interval_ms: self
+                    .config
+                    .performance
+                    .parallel_processing
+                    .work_steal_interval_ms,
             };
-            
+
             let work_stealing = WorkStealingCoordinator::new(parallel_config);
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
             let handle = work_stealing.start(shutdown_rx);
             self.task_handles.push(handle);
             self.work_stealing_coordinator = Some(work_stealing);
-            
+
             info!("Work stealing coordinator initialized");
         }
 
@@ -518,17 +603,15 @@ impl PipelineOrchestrator {
         for handle in self.task_handles.drain(..) {
             remaining_handles.push(handle);
         }
-        
+
         // Give tasks 5 seconds to shut down gracefully
-        let shutdown_timeout = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            async {
-                for handle in &mut remaining_handles {
-                    let _ = handle.await;
-                }
+        let shutdown_timeout = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            for handle in &mut remaining_handles {
+                let _ = handle.await;
             }
-        ).await;
-        
+        })
+        .await;
+
         if shutdown_timeout.is_err() {
             warn!("Some tasks did not shut down gracefully within timeout, aborting them");
             // Abort remaining tasks
@@ -536,14 +619,14 @@ impl PipelineOrchestrator {
                 handle.abort();
             }
         }
-        
+
         // Stop memory monitor
         if self.memory_monitor.is_some() {
             info!("Stopping memory monitor");
             // Memory monitor shutdown is handled by the shutdown signal in its background task
             // The task will exit when the channel is closed
         }
-        
+
         // Stop checkpoint manager
         if let Some(ref _checkpoint_manager) = self.checkpoint_manager {
             info!("Stopping checkpoint manager");
@@ -564,7 +647,10 @@ impl PipelineOrchestrator {
     /// Run the destination processor in a separate task
     async fn run_destination_processor(
         config: Config,
-        mut rx: mpsc::Receiver<(DestinationCommand, mpsc::Sender<Result<DestinationResponse>>)>,
+        mut rx: mpsc::Receiver<(
+            DestinationCommand,
+            mpsc::Sender<Result<DestinationResponse>>,
+        )>,
         mut shutdown_rx: watch::Receiver<bool>,
         adaptive_batching_manager: Option<Arc<AdaptiveBatchingManager>>,
     ) {
@@ -572,7 +658,7 @@ impl PipelineOrchestrator {
         let mut destination_adapter = if let Some(manager) = adaptive_batching_manager {
             Box::new(
                 MeilisearchAdapter::new(config.meilisearch.clone())
-                    .with_adaptive_batching(manager, config.performance.clone())
+                    .with_adaptive_batching(manager, config.performance.clone()),
             ) as Box<dyn DestinationAdapter>
         } else {
             Box::new(MeilisearchAdapter::new(config.meilisearch.clone()))
@@ -671,21 +757,25 @@ impl PipelineOrchestrator {
         let _ = destination_adapter.disconnect().await;
     }
 
-
     /// Start a sync task with a pre-created event receiver
     async fn start_sync_task_with_receiver(
-        &mut self, 
+        &mut self,
         task: SyncTaskConfig,
-        rx: mpsc::Receiver<Result<Event>>
+        rx: mpsc::Receiver<Result<Event>>,
     ) -> Result<()> {
-        info!("Starting sync task for table '{}' with CDC receiver", task.table);
-        
+        info!(
+            "Starting sync task for table '{}' with CDC receiver",
+            task.table
+        );
+
         // Load checkpoint if available
         if let Some(ref checkpoint_manager) = self.checkpoint_manager {
             match checkpoint_manager.load_checkpoint(&task.id).await {
                 Ok(Some(checkpoint)) => {
-                    info!("Loaded checkpoint for task '{}' at position {:?}", 
-                          task.id, checkpoint.position);
+                    info!(
+                        "Loaded checkpoint for task '{}' at position {:?}",
+                        task.id, checkpoint.position
+                    );
                     // Update in-memory checkpoint
                     let mut checkpoints_map = self.checkpoints.write().await;
                     checkpoints_map.insert(task.id.clone(), checkpoint.position);
@@ -707,27 +797,39 @@ impl PipelineOrchestrator {
         } else {
             // For CDC-only tables, ensure the index exists if auto_create_index is enabled
             if self.config.meilisearch.auto_create_index {
-                info!("Ensuring index '{}' exists for CDC-only table '{}'", task.index, task.table);
+                info!(
+                    "Ensuring index '{}' exists for CDC-only table '{}'",
+                    task.index, task.table
+                );
                 // Send a special command to ensure the index exists
                 if let Some(tx) = &self.destination_tx {
                     let (resp_tx, mut resp_rx) = mpsc::channel(1);
                     let command = DestinationCommand::EnsureIndex {
                         index_name: task.index.clone(),
-                        primary_key: if task.primary_key.is_empty() { 
-                            self.config.meilisearch.primary_key.clone() 
-                        } else { 
-                            Some(task.primary_key.clone()) 
+                        primary_key: if task.primary_key.is_empty() {
+                            self.config.meilisearch.primary_key.clone()
+                        } else {
+                            Some(task.primary_key.clone())
                         },
                     };
-                    
+
                     if let Err(e) = tx.send((command, resp_tx)).await {
-                        warn!("Failed to ensure index for CDC-only table '{}': {}", task.table, e);
+                        warn!(
+                            "Failed to ensure index for CDC-only table '{}': {}",
+                            task.table, e
+                        );
                     } else {
                         // Wait for response
                         if let Some(result) = resp_rx.recv().await {
                             match result {
-                                Ok(_) => info!("Index '{}' is ready for CDC-only table '{}'", task.index, task.table),
-                                Err(e) => warn!("Failed to ensure index '{}' for table '{}': {}", task.index, task.table, e),
+                                Ok(_) => info!(
+                                    "Index '{}' is ready for CDC-only table '{}'",
+                                    task.index, task.table
+                                ),
+                                Err(e) => warn!(
+                                    "Failed to ensure index '{}' for table '{}': {}",
+                                    task.index, task.table, e
+                                ),
                             }
                         }
                     }
@@ -739,17 +841,29 @@ impl PipelineOrchestrator {
         if self.config.performance.parallel_processing.enabled {
             // Use parallel processor
             let parallel_config = crate::pipeline::parallel_processor::ParallelConfig {
-                workers_per_table: self.config.performance.parallel_processing.workers_per_table,
-                max_concurrent_events: self.config.performance.parallel_processing.max_concurrent_events,
+                workers_per_table: self
+                    .config
+                    .performance
+                    .parallel_processing
+                    .workers_per_table,
+                max_concurrent_events: self
+                    .config
+                    .performance
+                    .parallel_processing
+                    .max_concurrent_events,
                 work_stealing: self.config.performance.parallel_processing.work_stealing,
-                steal_interval_ms: self.config.performance.parallel_processing.work_steal_interval_ms,
+                steal_interval_ms: self
+                    .config
+                    .performance
+                    .parallel_processing
+                    .work_steal_interval_ms,
             };
-            
+
             let mut processor = ParallelTableProcessor::new(task.table.clone(), parallel_config);
-            
+
             // Create channel for processed events
             let (processed_tx, processed_rx) = mpsc::channel(100);
-            
+
             // Start parallel workers
             let filter = self.filters.get(&task.table).cloned();
             let transformer = self.transformers.get(&task.table).cloned();
@@ -757,23 +871,26 @@ impl PipelineOrchestrator {
             // TODO: Add soft delete support to parallel processor
             let _soft_delete_handler = self.soft_delete_handlers.get(&task.table).cloned();
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
-            
+
             processor.start_workers(filter, transformer, mapper, processed_tx, shutdown_rx);
-            
+
             // Store processor for work stealing
             let processor_arc = Arc::new(processor);
-            self.parallel_processors.insert(task.table.clone(), processor_arc.clone());
-            
+            self.parallel_processors
+                .insert(task.table.clone(), processor_arc.clone());
+
             // Register with work stealing coordinator
             if let Some(ref coordinator) = self.work_stealing_coordinator {
-                coordinator.register_processor(task.table.clone(), processor_arc.clone()).await;
+                coordinator
+                    .register_processor(task.table.clone(), processor_arc.clone())
+                    .await;
             }
-            
+
             // Start event distributor task
             let event_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
             let processor_for_task = processor_arc.clone();
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
-            
+
             let distributor_handle = tokio::spawn(async move {
                 Self::distribute_events_to_parallel_processor(
                     event_stream,
@@ -783,16 +900,18 @@ impl PipelineOrchestrator {
                 .await;
             });
             self.task_handles.push(distributor_handle);
-            
+
             // Start batch processor for parallel results
-            let destination_tx = self.destination_tx.clone()
+            let destination_tx = self
+                .destination_tx
+                .clone()
                 .ok_or_else(|| MeiliBridgeError::Pipeline("Destination not started".to_string()))?;
             let checkpoints = self.checkpoints.clone();
             let table_name = task.table.clone();
             let dlq = self.dead_letter_queue.clone();
             let task_id = task.id.clone();
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
-            
+
             let batch_handle = tokio::spawn(async move {
                 Self::process_parallel_results(
                     processed_rx,
@@ -806,19 +925,27 @@ impl PipelineOrchestrator {
                 .await;
             });
             self.task_handles.push(batch_handle);
-            
-            info!("Started parallel processing for table '{}' with {} workers", 
-                  task.table, self.config.performance.parallel_processing.workers_per_table);
+
+            info!(
+                "Started parallel processing for table '{}' with {} workers",
+                task.table,
+                self.config
+                    .performance
+                    .parallel_processing
+                    .workers_per_table
+            );
         } else {
             // Use traditional single-threaded processing
             let event_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
-            
+
             let filter = self.filters.get(&task.table).cloned();
             let transformer = self.transformers.get(&task.table).cloned();
             let mapper = self.mappers.get(&task.table).cloned();
             let soft_delete_handler = self.soft_delete_handlers.get(&task.table).cloned();
-            let destination_tx = self.destination_tx.clone()
+            let destination_tx = self
+                .destination_tx
+                .clone()
                 .ok_or_else(|| MeiliBridgeError::Pipeline("Destination not started".to_string()))?;
             let checkpoints = self.checkpoints.clone();
             let table_name = task.table.clone();
@@ -829,7 +956,7 @@ impl PipelineOrchestrator {
             let task_id = task.id.clone();
             let exactly_once = self.exactly_once_manager.clone();
             let transactional_checkpoint = self.transactional_checkpoint.clone();
-            
+
             let handle = tokio::spawn(async move {
                 Self::process_event_stream(
                     event_stream,
@@ -853,7 +980,7 @@ impl PipelineOrchestrator {
 
             self.task_handles.push(handle);
         }
-        
+
         Ok(())
     }
 
@@ -865,7 +992,10 @@ impl PipelineOrchestrator {
         transformer: Option<EventTransformer>,
         mapper: Option<FieldMapper>,
         soft_delete_handler: Option<SoftDeleteHandler>,
-        destination_tx: mpsc::Sender<(DestinationCommand, mpsc::Sender<Result<DestinationResponse>>)>,
+        destination_tx: mpsc::Sender<(
+            DestinationCommand,
+            mpsc::Sender<Result<DestinationResponse>>,
+        )>,
         checkpoints: Arc<RwLock<HashMap<String, Position>>>,
         table_name: String,
         batch_size: usize,
@@ -896,7 +1026,7 @@ impl PipelineOrchestrator {
                             ).await {
                                 debug!("Sync task '{}': Event processed, adding to batch", table_name);
                                 event_batch.push(processed);
-                                
+
                                 // Process batch if it reaches the size limit
                                 if event_batch.len() >= batch_size {
                                     info!("Sync task '{}': Batch size {} reached, processing", table_name, batch_size);
@@ -920,11 +1050,11 @@ impl PipelineOrchestrator {
                         }
                     }
                 }
-                
+
                 // Process batch on timeout
                 _ = batch_timer.tick() => {
                     if !event_batch.is_empty() {
-                        info!("Sync task '{}': Batch timeout reached, processing {} events", 
+                        info!("Sync task '{}': Batch timeout reached, processing {} events",
                               table_name, event_batch.len());
                         Self::process_batch(
                             &mut event_batch,
@@ -940,12 +1070,12 @@ impl PipelineOrchestrator {
                         trace!("Sync task '{}': Batch timeout but no events to process", table_name);
                     }
                 }
-                
+
                 // Check for shutdown
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
                         info!("Shutting down event stream processor for table '{}'", table_name);
-                        
+
                         // Process any remaining events
                         if !event_batch.is_empty() {
                             Self::process_batch(
@@ -1015,7 +1145,7 @@ impl PipelineOrchestrator {
         if let Some(sd) = soft_delete_handler {
             match sd.transform_event(current_event) {
                 Some(transformed) => current_event = transformed,
-                None => return None,  // Filtered out by soft delete
+                None => return None, // Filtered out by soft delete
             }
         }
 
@@ -1025,7 +1155,10 @@ impl PipelineOrchestrator {
     /// Process a batch of events
     async fn process_batch(
         event_batch: &mut Vec<Event>,
-        destination_tx: &mpsc::Sender<(DestinationCommand, mpsc::Sender<Result<DestinationResponse>>)>,
+        destination_tx: &mpsc::Sender<(
+            DestinationCommand,
+            mpsc::Sender<Result<DestinationResponse>>,
+        )>,
         checkpoints: &Arc<RwLock<HashMap<String, Position>>>,
         table_name: &str,
         dead_letter_queue: Option<&Arc<DeadLetterQueue>>,
@@ -1037,10 +1170,16 @@ impl PipelineOrchestrator {
             return;
         }
 
-        debug!("Processing batch of {} events for table '{}'", event_batch.len(), table_name);
+        debug!(
+            "Processing batch of {} events for table '{}'",
+            event_batch.len(),
+            table_name
+        );
 
         // Check if exactly-once delivery is enabled
-        if let (Some(exactly_once), Some(transactional_cp)) = (exactly_once_manager, transactional_checkpoint) {
+        if let (Some(exactly_once), Some(transactional_cp)) =
+            (exactly_once_manager, transactional_checkpoint)
+        {
             // Use exactly-once delivery
             if let Err(e) = Self::process_batch_with_exactly_once(
                 event_batch,
@@ -1051,7 +1190,9 @@ impl PipelineOrchestrator {
                 task_id,
                 exactly_once,
                 transactional_cp,
-            ).await {
+            )
+            .await
+            {
                 error!("Failed to process batch with exactly-once delivery: {}", e);
             }
             return;
@@ -1060,7 +1201,7 @@ impl PipelineOrchestrator {
         // Standard processing without exactly-once delivery
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
         let cmd = DestinationCommand::ProcessEvents(event_batch.clone());
-        
+
         match destination_tx.send((cmd, resp_tx)).await {
             Ok(_) => {
                 // Wait for response
@@ -1076,22 +1217,28 @@ impl PipelineOrchestrator {
                                 "Processed batch with {} successes and {} failures for table '{}'",
                                 response.success_count, response.failed_count, table_name
                             );
-                            
+
                             // Send failed events to dead letter queue
                             if let Some(dlq) = dead_letter_queue {
                                 for (i, error) in response.errors.iter().enumerate() {
                                     error!("Batch processing error: {}", error);
-                                    
+
                                     // Try to identify which event failed (basic heuristic)
                                     if i < event_batch.len() {
                                         let failed_event = &event_batch[i];
-                                        if let Err(e) = dlq.add_failed_event(
-                                            task_id.to_string(),
-                                            convert_to_models_event(failed_event.clone()),
-                                            MeiliBridgeError::Pipeline(error.clone()),
-                                            0, // Initial retry count
-                                        ).await {
-                                            error!("Failed to add event to dead letter queue: {}", e);
+                                        if let Err(e) = dlq
+                                            .add_failed_event(
+                                                task_id.to_string(),
+                                                convert_to_models_event(failed_event.clone()),
+                                                MeiliBridgeError::Pipeline(error.clone()),
+                                                0, // Initial retry count
+                                            )
+                                            .await
+                                        {
+                                            error!(
+                                                "Failed to add event to dead letter queue: {}",
+                                                e
+                                            );
                                         }
                                     }
                                 }
@@ -1125,7 +1272,10 @@ impl PipelineOrchestrator {
     /// Process batch with exactly-once delivery guarantees
     async fn process_batch_with_exactly_once(
         event_batch: &mut Vec<Event>,
-        destination_tx: &mpsc::Sender<(DestinationCommand, mpsc::Sender<Result<DestinationResponse>>)>,
+        destination_tx: &mpsc::Sender<(
+            DestinationCommand,
+            mpsc::Sender<Result<DestinationResponse>>,
+        )>,
         checkpoints: &Arc<RwLock<HashMap<String, Position>>>,
         table_name: &str,
         dead_letter_queue: Option<&Arc<DeadLetterQueue>>,
@@ -1133,27 +1283,31 @@ impl PipelineOrchestrator {
         exactly_once_manager: &Arc<crate::delivery::ExactlyOnceManager>,
         transactional_checkpoint: &Arc<crate::delivery::TransactionalCheckpoint>,
     ) -> Result<()> {
-        use crate::pipeline::exactly_once_helpers::{extract_position_from_event, create_dedup_key_from_event};
-        
+        use crate::pipeline::exactly_once_helpers::{
+            create_dedup_key_from_event, extract_position_from_event,
+        };
+
         // Extract position from last event
         let last_position = extract_position_from_event(event_batch.last().unwrap());
-        
+
         if let Some(position) = last_position {
             // Begin transaction
             let transaction_id = exactly_once_manager.begin_transaction(task_id).await?;
-            
+
             // Start transactional checkpoint
-            transactional_checkpoint.begin_transaction(
-                transaction_id.clone(),
-                task_id.to_string(),
-                position.clone(),
-            ).await?;
-            
+            transactional_checkpoint
+                .begin_transaction(
+                    transaction_id.clone(),
+                    task_id.to_string(),
+                    position.clone(),
+                )
+                .await?;
+
             // Check for duplicates and filter them out
             let mut deduplicated_batch = Vec::new();
             for event in event_batch.iter() {
                 let dedup_key = create_dedup_key_from_event(event);
-                
+
                 if !exactly_once_manager.is_duplicate(&dedup_key).await? {
                     deduplicated_batch.push(event.clone());
                     exactly_once_manager.mark_processed(dedup_key).await?;
@@ -1161,26 +1315,28 @@ impl PipelineOrchestrator {
                     debug!("Skipping duplicate event: {:?}", dedup_key);
                 }
             }
-            
+
             if deduplicated_batch.is_empty() {
                 info!("All events in batch were duplicates, skipping");
                 event_batch.clear();
                 return Ok(());
             }
-            
+
             // Prepare phase - save checkpoint atomically BEFORE Meilisearch write
             let prepared = transactional_checkpoint.prepare(&transaction_id).await?;
-            
+
             if !prepared {
                 error!("Failed to prepare transaction {}", transaction_id);
                 exactly_once_manager.rollback(&transaction_id).await?;
-                return Err(MeiliBridgeError::Pipeline("Transaction prepare failed".to_string()));
+                return Err(MeiliBridgeError::Pipeline(
+                    "Transaction prepare failed".to_string(),
+                ));
             }
-            
+
             // Send to destination
             let (resp_tx, mut resp_rx) = mpsc::channel(1);
             let cmd = DestinationCommand::ProcessEvents(deduplicated_batch.clone());
-            
+
             match destination_tx.send((cmd, resp_tx)).await {
                 Ok(_) => {
                     // Wait for response
@@ -1190,12 +1346,12 @@ impl PipelineOrchestrator {
                                 // Success - commit the transaction
                                 transactional_checkpoint.commit(&transaction_id).await?;
                                 exactly_once_manager.commit(&transaction_id).await?;
-                                
+
                                 info!(
                                     "Successfully processed {} events for table '{}' with exactly-once delivery",
                                     response.success_count, table_name
                                 );
-                                
+
                                 // Update in-memory checkpoint (for monitoring)
                                 let mut checkpoints_map = checkpoints.write().await;
                                 checkpoints_map.insert(task_id.to_string(), position);
@@ -1205,30 +1361,37 @@ impl PipelineOrchestrator {
                                     "Batch processing failed with {} errors, rolling back transaction",
                                     response.failed_count
                                 );
-                                
+
                                 transactional_checkpoint.rollback(&transaction_id).await?;
                                 exactly_once_manager.rollback(&transaction_id).await?;
-                                
+
                                 // Send failed events to DLQ
                                 if let Some(dlq) = dead_letter_queue {
                                     for (i, error) in response.errors.iter().enumerate() {
                                         if i < deduplicated_batch.len() {
                                             let failed_event = &deduplicated_batch[i];
-                                            if let Err(e) = dlq.add_failed_event(
-                                                task_id.to_string(),
-                                                convert_to_models_event(failed_event.clone()),
-                                                MeiliBridgeError::Pipeline(error.clone()),
-                                                0,
-                                            ).await {
-                                                error!("Failed to add event to dead letter queue: {}", e);
+                                            if let Err(e) = dlq
+                                                .add_failed_event(
+                                                    task_id.to_string(),
+                                                    convert_to_models_event(failed_event.clone()),
+                                                    MeiliBridgeError::Pipeline(error.clone()),
+                                                    0,
+                                                )
+                                                .await
+                                            {
+                                                error!(
+                                                    "Failed to add event to dead letter queue: {}",
+                                                    e
+                                                );
                                             }
                                         }
                                     }
                                 }
-                                
-                                return Err(MeiliBridgeError::Pipeline(
-                                    format!("Batch processing failed with {} errors", response.failed_count)
-                                ));
+
+                                return Err(MeiliBridgeError::Pipeline(format!(
+                                    "Batch processing failed with {} errors",
+                                    response.failed_count
+                                )));
                             }
                         }
                         Some(Err(e)) => {
@@ -1241,7 +1404,9 @@ impl PipelineOrchestrator {
                             error!("No response from destination, rolling back");
                             transactional_checkpoint.rollback(&transaction_id).await?;
                             exactly_once_manager.rollback(&transaction_id).await?;
-                            return Err(MeiliBridgeError::Pipeline("No response from destination".to_string()));
+                            return Err(MeiliBridgeError::Pipeline(
+                                "No response from destination".to_string(),
+                            ));
                         }
                     }
                 }
@@ -1253,7 +1418,7 @@ impl PipelineOrchestrator {
                 }
             }
         }
-        
+
         event_batch.clear();
         Ok(())
     }
@@ -1262,10 +1427,9 @@ impl PipelineOrchestrator {
     async fn perform_full_sync(&mut self, task: &SyncTaskConfig) -> Result<()> {
         info!("Starting full sync for table '{}'", task.table);
 
-        let source = self.source_adapters.get(&task.source_name)
-            .ok_or_else(|| MeiliBridgeError::Pipeline(
-                format!("Source adapter '{}' not found", task.source_name)
-            ))?;
+        let source = self.source_adapters.get(&task.source_name).ok_or_else(|| {
+            MeiliBridgeError::Pipeline(format!("Source adapter '{}' not found", task.source_name))
+        })?;
 
         let batch_size = task.options.batch_size;
         let mut data_stream = source.get_full_data(&task.table, batch_size).await?;
@@ -1293,14 +1457,21 @@ impl PipelineOrchestrator {
                         &transformer,
                         &mapper,
                         &soft_delete_handler,
-                    ).await {
+                    )
+                    .await
+                    {
                         if let Event::FullSync { data, .. } = processed {
                             documents.push(data);
                             total_count += 1;
 
                             // Import batch when it reaches the size limit
                             if documents.len() >= batch_size {
-                                self.import_documents(&task.index, &mut documents, Some(&task.primary_key)).await?;
+                                self.import_documents(
+                                    &task.index,
+                                    &mut documents,
+                                    Some(&task.primary_key),
+                                )
+                                .await?;
                             }
                         }
                     }
@@ -1313,16 +1484,27 @@ impl PipelineOrchestrator {
 
         // Import any remaining documents
         if !documents.is_empty() {
-            self.import_documents(&task.index, &mut documents, Some(&task.primary_key)).await?;
+            self.import_documents(&task.index, &mut documents, Some(&task.primary_key))
+                .await?;
         }
 
-        info!("Full sync completed for table '{}': {} documents", task.table, total_count);
+        info!(
+            "Full sync completed for table '{}': {} documents",
+            task.table, total_count
+        );
         Ok(())
     }
 
     /// Import documents to destination
-    async fn import_documents(&mut self, index: &str, documents: &mut Vec<Value>, primary_key: Option<&str>) -> Result<()> {
-        let destination_tx = self.destination_tx.as_ref()
+    async fn import_documents(
+        &mut self,
+        index: &str,
+        documents: &mut Vec<Value>,
+        primary_key: Option<&str>,
+    ) -> Result<()> {
+        let destination_tx = self
+            .destination_tx
+            .as_ref()
             .ok_or_else(|| MeiliBridgeError::Pipeline("Destination not started".to_string()))?;
 
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
@@ -1332,13 +1514,18 @@ impl PipelineOrchestrator {
             primary_key: primary_key.map(|s| s.to_string()),
         };
 
-        destination_tx.send((cmd, resp_tx)).await
+        destination_tx
+            .send((cmd, resp_tx))
+            .await
             .map_err(|_| MeiliBridgeError::Pipeline("Failed to send to destination".to_string()))?;
 
         match resp_rx.recv().await {
             Some(Ok(response)) => {
                 if response.failed_count == 0 {
-                    info!("Imported {} documents to index '{}'", response.success_count, index);
+                    info!(
+                        "Imported {} documents to index '{}'",
+                        response.success_count, index
+                    );
                 } else {
                     warn!(
                         "Import completed with {} successes and {} failures",
@@ -1347,7 +1534,11 @@ impl PipelineOrchestrator {
                 }
             }
             Some(Err(e)) => return Err(e),
-            None => return Err(MeiliBridgeError::Pipeline("No response from destination".to_string())),
+            None => {
+                return Err(MeiliBridgeError::Pipeline(
+                    "No response from destination".to_string(),
+                ))
+            }
         }
 
         documents.clear();
@@ -1357,21 +1548,21 @@ impl PipelineOrchestrator {
     /// Start checkpoint persistence task
     async fn start_checkpoint_task(&mut self) -> Result<()> {
         info!("Starting checkpoint persistence task");
-        
+
         let checkpoints = self.checkpoints.clone();
         let checkpoint_manager = self.checkpoint_manager.clone();
         let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
-        
+
         if let Some(manager) = checkpoint_manager {
             let handle = tokio::spawn(async move {
                 Self::run_checkpoint_persistence(checkpoints, manager, shutdown_rx).await;
             });
             self.task_handles.push(handle);
         }
-        
+
         Ok(())
     }
-    
+
     /// Run checkpoint persistence loop
     async fn run_checkpoint_persistence(
         checkpoints: Arc<RwLock<HashMap<String, Position>>>,
@@ -1380,97 +1571,111 @@ impl PipelineOrchestrator {
     ) {
         let mut check_interval = interval(Duration::from_secs(10)); // Check every 10 seconds
         check_interval.reset();
-        
+
         loop {
             tokio::select! {
                 _ = check_interval.tick() => {
                     // Get current checkpoints
                     let checkpoints_map = checkpoints.read().await;
-                    
+
                     for (task_id, position) in checkpoints_map.iter() {
                         if let Err(e) = checkpoint_manager.save_checkpoint(
-                            task_id.clone(), 
+                            task_id.clone(),
                             position.clone()
                         ).await {
                             error!("Failed to save checkpoint for task '{}': {}", task_id, e);
                         }
                     }
                 }
-                
+
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
                         info!("Shutting down checkpoint persistence task");
-                        
+
                         // Final save of all checkpoints
                         let checkpoints_map = checkpoints.read().await;
                         for (task_id, position) in checkpoints_map.iter() {
                             if let Err(e) = checkpoint_manager.save_checkpoint(
-                                task_id.clone(), 
+                                task_id.clone(),
                                 position.clone()
                             ).await {
                                 error!("Failed to save checkpoint for task '{}': {}", task_id, e);
                             }
                         }
-                        
+
                         break;
                     }
                 }
             }
         }
     }
-    
+
     /// Save checkpoint for a task
     #[allow(dead_code)]
     async fn save_checkpoint(&self, task_id: &str, position: Position) -> Result<()> {
         // Update in-memory checkpoint
         let mut checkpoints_map = self.checkpoints.write().await;
         checkpoints_map.insert(task_id.to_string(), position.clone());
-        
+
         // Persist to storage if checkpoint manager is available
         if let Some(ref checkpoint_manager) = self.checkpoint_manager {
-            checkpoint_manager.save_checkpoint(task_id.to_string(), position).await?;
+            checkpoint_manager
+                .save_checkpoint(task_id.to_string(), position)
+                .await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Get dead letter queue statistics
     pub async fn get_dlq_statistics(&self) -> Result<crate::dlq::DlqStatistics> {
         if let Some(dlq) = &self.dead_letter_queue {
             dlq.get_statistics().await
         } else {
-            Err(MeiliBridgeError::Pipeline("Dead letter queue not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "Dead letter queue not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Reprocess dead letter entries for a task
-    pub async fn reprocess_dlq_entries(&self, task_id: &str, limit: Option<usize>) -> Result<usize> {
+    pub async fn reprocess_dlq_entries(
+        &self,
+        task_id: &str,
+        limit: Option<usize>,
+    ) -> Result<usize> {
         if let Some(dlq) = &self.dead_letter_queue {
             dlq.reprocess_entries(task_id, limit).await
         } else {
-            Err(MeiliBridgeError::Pipeline("Dead letter queue not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "Dead letter queue not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Clear dead letter entries for a task
     pub async fn clear_dlq_task(&self, task_id: &str) -> Result<usize> {
         if let Some(dlq) = &self.dead_letter_queue {
             dlq.clear_task(task_id).await
         } else {
-            Err(MeiliBridgeError::Pipeline("Dead letter queue not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "Dead letter queue not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Pause CDC processing for all tables
     pub async fn pause_cdc(&self) -> Result<()> {
         if let Some(coordinator) = &self.cdc_coordinator {
             coordinator.read().await.pause_all().await;
             Ok(())
         } else {
-            Err(MeiliBridgeError::Pipeline("CDC coordinator not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "CDC coordinator not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Get access to the PostgreSQL statement cache if available
     pub fn get_postgres_cache(&self) -> Option<Arc<crate::source::postgres::StatementCache>> {
         // This is a workaround since we can't downcast trait objects
@@ -1478,7 +1683,7 @@ impl PipelineOrchestrator {
         // redesign the architecture to make the cache accessible
         None
     }
-    
+
     /// Create a PostgreSQL health check if using PostgreSQL source
     pub fn create_postgres_health_check(&self) -> Option<Box<dyn crate::health::HealthCheck>> {
         // Try single source first (backward compatibility)
@@ -1487,81 +1692,91 @@ impl PipelineOrchestrator {
                 crate::config::SourceConfig::PostgreSQL(pg_config) => {
                     // Create a new connector for health checks
                     let connector = Arc::new(RwLock::new(
-                        crate::source::postgres::PostgresConnector::new(pg_config.clone())
+                        crate::source::postgres::PostgresConnector::new(pg_config.clone()),
                     ));
-                    
+
                     return Some(Box::new(crate::health::PostgresHealthCheck::new(connector)));
                 }
                 _ => {}
             }
         }
-        
+
         // If multiple sources, use the first PostgreSQL source
         for named_source in &self.config.sources {
             match &named_source.config {
                 crate::config::SourceConfig::PostgreSQL(pg_config) => {
                     // Create a new connector for health checks
                     let connector = Arc::new(RwLock::new(
-                        crate::source::postgres::PostgresConnector::new(pg_config.clone())
+                        crate::source::postgres::PostgresConnector::new(pg_config.clone()),
                     ));
-                    
+
                     return Some(Box::new(crate::health::PostgresHealthCheck::new(connector)));
                 }
                 _ => {}
             }
         }
-        
+
         None
     }
-    
+
     /// Resume CDC processing for all tables
     pub async fn resume_cdc(&self) -> Result<()> {
         if let Some(coordinator) = &self.cdc_coordinator {
             coordinator.read().await.resume_all().await;
             Ok(())
         } else {
-            Err(MeiliBridgeError::Pipeline("CDC coordinator not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "CDC coordinator not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Check if CDC is paused
     pub async fn is_cdc_paused(&self) -> Result<bool> {
         if let Some(coordinator) = &self.cdc_coordinator {
             Ok(coordinator.read().await.is_paused().await)
         } else {
-            Err(MeiliBridgeError::Pipeline("CDC coordinator not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "CDC coordinator not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Pause CDC processing for a specific table
     pub async fn pause_cdc_table(&self, table_name: &str) -> Result<()> {
         if let Some(coordinator) = &self.cdc_coordinator {
             coordinator.read().await.pause_table(table_name).await;
             Ok(())
         } else {
-            Err(MeiliBridgeError::Pipeline("CDC coordinator not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "CDC coordinator not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Resume CDC processing for a specific table
     pub async fn resume_cdc_table(&self, table_name: &str) -> Result<()> {
         if let Some(coordinator) = &self.cdc_coordinator {
             coordinator.read().await.resume_table(table_name).await;
             Ok(())
         } else {
-            Err(MeiliBridgeError::Pipeline("CDC coordinator not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "CDC coordinator not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Get list of paused tables
     pub async fn get_paused_tables(&self) -> Result<Vec<String>> {
         if let Some(coordinator) = &self.cdc_coordinator {
             Ok(coordinator.read().await.get_paused_tables().await)
         } else {
-            Err(MeiliBridgeError::Pipeline("CDC coordinator not initialized".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "CDC coordinator not initialized".to_string(),
+            ))
         }
     }
-    
+
     /// Distribute events to parallel processor
     async fn distribute_events_to_parallel_processor(
         mut event_stream: impl StreamExt<Item = Result<Event>> + Unpin,
@@ -1570,14 +1785,14 @@ impl PipelineOrchestrator {
     ) {
         let mut batch = Vec::new();
         let mut batch_timer = interval(Duration::from_millis(100));
-        
+
         loop {
             tokio::select! {
                 Some(event_result) = event_stream.next() => {
                     match event_result {
                         Ok(event) => {
                             batch.push(event);
-                            
+
                             // Send batch when it reaches a reasonable size
                             if batch.len() >= 50 {
                                 processor.enqueue_events(std::mem::take(&mut batch)).await;
@@ -1588,13 +1803,13 @@ impl PipelineOrchestrator {
                         }
                     }
                 }
-                
+
                 _ = batch_timer.tick() => {
                     if !batch.is_empty() {
                         processor.enqueue_events(std::mem::take(&mut batch)).await;
                     }
                 }
-                
+
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
                         // Process remaining events
@@ -1607,11 +1822,14 @@ impl PipelineOrchestrator {
             }
         }
     }
-    
+
     /// Process results from parallel workers
     async fn process_parallel_results(
         mut result_rx: mpsc::Receiver<Vec<Event>>,
-        destination_tx: mpsc::Sender<(DestinationCommand, mpsc::Sender<Result<DestinationResponse>>)>,
+        destination_tx: mpsc::Sender<(
+            DestinationCommand,
+            mpsc::Sender<Result<DestinationResponse>>,
+        )>,
         checkpoints: Arc<RwLock<HashMap<String, Position>>>,
         table_name: String,
         dead_letter_queue: Option<Arc<DeadLetterQueue>>,
@@ -1622,34 +1840,34 @@ impl PipelineOrchestrator {
             tokio::select! {
                 Some(events) = result_rx.recv() => {
                     if !events.is_empty() {
-                        debug!("Processing {} events from parallel workers for table '{}'", 
+                        debug!("Processing {} events from parallel workers for table '{}'",
                                events.len(), table_name);
-                        
+
                         // Record batch size metric
                         metrics::record_batch_size(&table_name, events.len());
-                        
+
                         // Send to destination
                         let (resp_tx, mut resp_rx) = mpsc::channel(1);
                         let command = DestinationCommand::ProcessEvents(events);
-                        
+
                         if let Err(e) = destination_tx.send((command, resp_tx)).await {
                             error!("Failed to send events to destination: {}", e);
                             continue;
                         }
-                        
+
                         // Wait for response
                         if let Some(result) = resp_rx.recv().await {
                             match result {
                                 Ok(response) => {
                                     if response.success_count > 0 {
-                                        info!("Successfully processed {} events for table '{}'", 
+                                        info!("Successfully processed {} events for table '{}'",
                                               response.success_count, table_name);
                                     }
-                                    
+
                                     if response.failed_count > 0 {
-                                        warn!("Failed to process {} events for table '{}'", 
+                                        warn!("Failed to process {} events for table '{}'",
                                               response.failed_count, table_name);
-                                              
+
                                         // Handle failed events if DLQ is enabled
                                         if let Some(_dlq) = &dead_letter_queue {
                                             // Note: We'd need to track which specific events failed
@@ -1657,7 +1875,7 @@ impl PipelineOrchestrator {
                                             warn!("Dead letter queue handling for parallel processing needs implementation");
                                         }
                                     }
-                                    
+
                                     // Update checkpoint if we have a position
                                     if let Some(position) = response.last_position {
                                         // Update in-memory checkpoint using task_id
@@ -1673,7 +1891,7 @@ impl PipelineOrchestrator {
                         }
                     }
                 }
-                
+
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
                         info!("Shutting down parallel result processor for table '{}'", table_name);

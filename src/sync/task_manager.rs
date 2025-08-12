@@ -34,14 +34,14 @@ pub enum TaskState {
 /// Commands for task management
 #[derive(Debug)]
 pub enum TaskCommand {
-    Start(String),      // Task ID
-    Stop(String),       // Task ID
-    Pause(String),      // Task ID
-    Resume(String),     // Task ID
-    GetStatus(String, mpsc::Sender<Option<TaskStatus>>),  // Task ID
+    Start(String),                                       // Task ID
+    Stop(String),                                        // Task ID
+    Pause(String),                                       // Task ID
+    Resume(String),                                      // Task ID
+    GetStatus(String, mpsc::Sender<Option<TaskStatus>>), // Task ID
     GetAllStatuses(mpsc::Sender<Vec<TaskStatus>>),
     CreateTask(crate::config::SyncTaskConfig, mpsc::Sender<Result<()>>),
-    DeleteTask(String, mpsc::Sender<Result<()>>),  // Task ID
+    DeleteTask(String, mpsc::Sender<Result<()>>), // Task ID
     Shutdown,
 }
 
@@ -104,11 +104,11 @@ impl SyncTaskManager {
         let statuses = self.task_statuses.clone();
         let config = self.config.clone();
         let mut shutdown_rx_clone = shutdown_rx.clone();
-        
+
         let command_handle = tokio::spawn(async move {
             Self::process_commands(rx, statuses, config, &mut shutdown_rx_clone).await;
         });
-        
+
         self.task_handles.push(command_handle);
 
         // Start pipeline orchestrator
@@ -121,11 +121,11 @@ impl SyncTaskManager {
         // Start monitoring task
         let statuses = self.task_statuses.clone();
         let mut shutdown_rx_clone = shutdown_rx.clone();
-        
+
         let monitor_handle = tokio::spawn(async move {
             Self::monitor_tasks(statuses, &mut shutdown_rx_clone).await;
         });
-        
+
         self.task_handles.push(monitor_handle);
 
         // Auto-start tasks configured for auto-start
@@ -238,14 +238,14 @@ impl SyncTaskManager {
         _config: &Arc<RwLock<Config>>,
     ) {
         info!("Starting task '{}'", task_id);
-        
+
         let mut statuses_map = statuses.write().await;
         if let Some(status) = statuses_map.get_mut(task_id) {
             if status.state == TaskState::Running {
                 warn!("Task '{}' is already running", task_id);
                 return;
             }
-            
+
             status.state = TaskState::Running;
             status.last_updated = chrono::Utc::now();
             info!("Task '{}' state changed to Running", task_id);
@@ -253,12 +253,9 @@ impl SyncTaskManager {
     }
 
     /// Stop a specific task
-    async fn stop_task(
-        task_id: &str,
-        statuses: &Arc<RwLock<HashMap<String, TaskStatus>>>,
-    ) {
+    async fn stop_task(task_id: &str, statuses: &Arc<RwLock<HashMap<String, TaskStatus>>>) {
         info!("Stopping task '{}'", task_id);
-        
+
         let mut statuses_map = statuses.write().await;
         if let Some(status) = statuses_map.get_mut(task_id) {
             status.state = TaskState::Idle;
@@ -268,12 +265,9 @@ impl SyncTaskManager {
     }
 
     /// Pause a specific task
-    async fn pause_task(
-        task_id: &str,
-        statuses: &Arc<RwLock<HashMap<String, TaskStatus>>>,
-    ) {
+    async fn pause_task(task_id: &str, statuses: &Arc<RwLock<HashMap<String, TaskStatus>>>) {
         info!("Pausing task '{}'", task_id);
-        
+
         let mut statuses_map = statuses.write().await;
         if let Some(status) = statuses_map.get_mut(task_id) {
             if status.state == TaskState::Running {
@@ -285,12 +279,9 @@ impl SyncTaskManager {
     }
 
     /// Resume a specific task
-    async fn resume_task(
-        task_id: &str,
-        statuses: &Arc<RwLock<HashMap<String, TaskStatus>>>,
-    ) {
+    async fn resume_task(task_id: &str, statuses: &Arc<RwLock<HashMap<String, TaskStatus>>>) {
         info!("Resuming task '{}'", task_id);
-        
+
         let mut statuses_map = statuses.write().await;
         if let Some(status) = statuses_map.get_mut(task_id) {
             if status.state == TaskState::Paused {
@@ -307,12 +298,12 @@ impl SyncTaskManager {
         shutdown_rx: &mut watch::Receiver<bool>,
     ) {
         let mut monitor_interval = interval(Duration::from_secs(10));
-        
+
         loop {
             tokio::select! {
                 _ = monitor_interval.tick() => {
                     let statuses_map = statuses.read().await;
-                    
+
                     // Log status summary
                     let running_count = statuses_map.values()
                         .filter(|s| s.state == TaskState::Running)
@@ -320,14 +311,14 @@ impl SyncTaskManager {
                     let failed_count = statuses_map.values()
                         .filter(|s| s.state == TaskState::Failed)
                         .count();
-                    
+
                     debug!(
                         "Task status summary: {} total, {} running, {} failed",
                         statuses_map.len(),
                         running_count,
                         failed_count
                     );
-                    
+
                     // Check for tasks that need recovery
                     for (task_id, status) in statuses_map.iter() {
                         if status.state == TaskState::Failed {
@@ -356,7 +347,9 @@ impl SyncTaskManager {
     pub async fn get_task_status(&self, task_id: &str) -> Option<TaskStatus> {
         if let Some(tx) = &self.command_tx {
             let (resp_tx, mut resp_rx) = mpsc::channel(1);
-            let _ = tx.send(TaskCommand::GetStatus(task_id.to_string(), resp_tx)).await;
+            let _ = tx
+                .send(TaskCommand::GetStatus(task_id.to_string(), resp_tx))
+                .await;
             resp_rx.recv().await.flatten()
         } else {
             None
@@ -388,7 +381,10 @@ impl SyncTaskManager {
             status.last_updated = chrono::Utc::now();
             Ok(())
         } else {
-            Err(MeiliBridgeError::Pipeline(format!("Task '{}' not found", task_id)))
+            Err(MeiliBridgeError::Pipeline(format!(
+                "Task '{}' not found",
+                task_id
+            )))
         }
     }
 
@@ -399,19 +395,25 @@ impl SyncTaskManager {
             status.error_count += 1;
             status.last_error = Some(error);
             status.last_updated = chrono::Utc::now();
-            
+
             // Change state to Failed if too many errors
             if status.error_count > 10 {
                 status.state = TaskState::Failed;
-                error!("Task '{}' failed after {} errors", task_id, status.error_count);
+                error!(
+                    "Task '{}' failed after {} errors",
+                    task_id, status.error_count
+                );
             }
-            
+
             Ok(())
         } else {
-            Err(MeiliBridgeError::Pipeline(format!("Task '{}' not found", task_id)))
+            Err(MeiliBridgeError::Pipeline(format!(
+                "Task '{}' not found",
+                task_id
+            )))
         }
     }
-    
+
     /// Create a new sync task
     async fn create_task(
         task_config: crate::config::SyncTaskConfig,
@@ -419,21 +421,26 @@ impl SyncTaskManager {
         config: &Arc<RwLock<Config>>,
     ) -> Result<()> {
         info!("Creating new sync task for table '{}'", task_config.table);
-        
+
         // Add task to config
         {
             let mut config_guard = config.write().await;
-            
+
             // Check if task already exists
-            if config_guard.sync_tasks.iter().any(|t| t.table == task_config.table) {
-                return Err(MeiliBridgeError::Validation(
-                    format!("Task for table '{}' already exists", task_config.table)
-                ));
+            if config_guard
+                .sync_tasks
+                .iter()
+                .any(|t| t.table == task_config.table)
+            {
+                return Err(MeiliBridgeError::Validation(format!(
+                    "Task for table '{}' already exists",
+                    task_config.table
+                )));
             }
-            
+
             config_guard.sync_tasks.push(task_config.clone());
         }
-        
+
         // Add task status
         {
             let mut statuses_map = statuses.write().await;
@@ -450,11 +457,14 @@ impl SyncTaskManager {
             };
             statuses_map.insert(task_config.table.clone(), status);
         }
-        
-        info!("Successfully created sync task for table '{}'", task_config.table);
+
+        info!(
+            "Successfully created sync task for table '{}'",
+            task_config.table
+        );
         Ok(())
     }
-    
+
     /// Delete a sync task
     async fn delete_task(
         task_id: &str,
@@ -462,51 +472,63 @@ impl SyncTaskManager {
         config: &Arc<RwLock<Config>>,
     ) -> Result<()> {
         info!("Deleting sync task '{}'", task_id);
-        
+
         // First, stop the task if it's running
         Self::stop_task(task_id, statuses).await;
-        
+
         // Remove from config
         {
             let mut config_guard = config.write().await;
             config_guard.sync_tasks.retain(|t| t.table != task_id);
         }
-        
+
         // Remove from statuses
         {
             let mut statuses_map = statuses.write().await;
             statuses_map.remove(task_id);
         }
-        
+
         info!("Successfully deleted sync task '{}'", task_id);
         Ok(())
     }
-    
+
     /// Create a new sync task (public interface)
     pub async fn create_sync_task(&self, task_config: crate::config::SyncTaskConfig) -> Result<()> {
         if let Some(tx) = &self.command_tx {
             let (resp_tx, mut resp_rx) = mpsc::channel(1);
-            tx.send(TaskCommand::CreateTask(task_config, resp_tx)).await
-                .map_err(|_| MeiliBridgeError::Pipeline("Failed to send create task command".to_string()))?;
-            
-            resp_rx.recv().await
-                .ok_or_else(|| MeiliBridgeError::Pipeline("No response from task manager".to_string()))?
+            tx.send(TaskCommand::CreateTask(task_config, resp_tx))
+                .await
+                .map_err(|_| {
+                    MeiliBridgeError::Pipeline("Failed to send create task command".to_string())
+                })?;
+
+            resp_rx.recv().await.ok_or_else(|| {
+                MeiliBridgeError::Pipeline("No response from task manager".to_string())
+            })?
         } else {
-            Err(MeiliBridgeError::Pipeline("Task manager not started".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "Task manager not started".to_string(),
+            ))
         }
     }
-    
+
     /// Delete a sync task (public interface)
     pub async fn delete_sync_task(&self, task_id: &str) -> Result<()> {
         if let Some(tx) = &self.command_tx {
             let (resp_tx, mut resp_rx) = mpsc::channel(1);
-            tx.send(TaskCommand::DeleteTask(task_id.to_string(), resp_tx)).await
-                .map_err(|_| MeiliBridgeError::Pipeline("Failed to send delete task command".to_string()))?;
-            
-            resp_rx.recv().await
-                .ok_or_else(|| MeiliBridgeError::Pipeline("No response from task manager".to_string()))?
+            tx.send(TaskCommand::DeleteTask(task_id.to_string(), resp_tx))
+                .await
+                .map_err(|_| {
+                    MeiliBridgeError::Pipeline("Failed to send delete task command".to_string())
+                })?;
+
+            resp_rx.recv().await.ok_or_else(|| {
+                MeiliBridgeError::Pipeline("No response from task manager".to_string())
+            })?
         } else {
-            Err(MeiliBridgeError::Pipeline("Task manager not started".to_string()))
+            Err(MeiliBridgeError::Pipeline(
+                "Task manager not started".to_string(),
+            ))
         }
     }
 }

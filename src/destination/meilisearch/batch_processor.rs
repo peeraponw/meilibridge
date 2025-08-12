@@ -1,5 +1,5 @@
 use crate::error::{MeiliBridgeError, Result};
-use crate::models::{CdcEvent, EventType, stream_event::Event};
+use crate::models::{stream_event::Event, CdcEvent, EventType};
 use serde_json::Value;
 use tracing::{debug, warn};
 
@@ -52,16 +52,20 @@ impl BatchProcessor {
                         } else if let Some(id) = pk_value.as_i64() {
                             self.documents_to_delete.push(id.to_string());
                         } else {
-                            warn!("Primary key value is not a string or number: {:?}", pk_value);
+                            warn!(
+                                "Primary key value is not a string or number: {:?}",
+                                pk_value
+                            );
                         }
                     } else {
-                        return Err(MeiliBridgeError::Meilisearch(
-                            format!("Missing primary key field '{}' in delete event", pk_field)
-                        ));
+                        return Err(MeiliBridgeError::Meilisearch(format!(
+                            "Missing primary key field '{}' in delete event",
+                            pk_field
+                        )));
                     }
                 } else {
                     return Err(MeiliBridgeError::Meilisearch(
-                        "No primary key configured for delete operations".to_string()
+                        "No primary key configured for delete operations".to_string(),
                     ));
                 }
             }

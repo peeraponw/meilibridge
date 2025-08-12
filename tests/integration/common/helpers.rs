@@ -1,8 +1,8 @@
 // Test helper functions
 
-use std::time::Duration;
 use meilisearch_sdk::client::Client as MeilisearchClient;
 use meilisearch_sdk::indexes::Index as MeilisearchIndex;
+use std::time::Duration;
 
 // Async assertion helpers
 pub async fn assert_eventually<F, Fut>(
@@ -15,16 +15,16 @@ where
     Fut: std::future::Future<Output = bool>,
 {
     let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
-    
+
     loop {
         if condition().await {
             return Ok(());
         }
-        
+
         if tokio::time::Instant::now() >= deadline {
             return Err("Condition not met within timeout".to_string());
         }
-        
+
         tokio::time::sleep(Duration::from_millis(check_interval_ms)).await;
     }
 }
@@ -39,7 +39,7 @@ where
     Fut: std::future::Future<Output = Result<T, E>>,
 {
     let mut last_error = None;
-    
+
     for _ in 0..max_retries {
         match operation().await {
             Ok(result) => return Ok(result),
@@ -49,7 +49,7 @@ where
             }
         }
     }
-    
+
     Err(last_error.unwrap())
 }
 
@@ -82,9 +82,7 @@ pub async fn wait_for_index(
     index_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     assert_eventually(
-        || async {
-            client.get_index(index_name).await.is_ok()
-        },
+        || async { client.get_index(index_name).await.is_ok() },
         5000,
         100,
     )
@@ -118,13 +116,11 @@ pub async fn clear_redis_keys(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut conn = client.get_connection()?;
     let keys: Vec<String> = redis::cmd("KEYS").arg(pattern).query(&mut conn)?;
-    
+
     if !keys.is_empty() {
-        redis::cmd("DEL")
-            .arg(&keys)
-            .query::<()>(&mut conn)?;
+        redis::cmd("DEL").arg(&keys).query::<()>(&mut conn)?;
     }
-    
+
     Ok(())
 }
 
@@ -139,7 +135,7 @@ impl TestCleanup {
             actions: Vec::new(),
         }
     }
-    
+
     pub fn add<F>(&mut self, action: F)
     where
         F: FnOnce() + Send + 'static,
@@ -169,7 +165,7 @@ impl PerformanceTimer {
             name: name.to_string(),
         }
     }
-    
+
     pub fn elapsed(&self) -> Duration {
         self.start.elapsed()
     }

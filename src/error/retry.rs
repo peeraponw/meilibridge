@@ -1,8 +1,8 @@
 use crate::error::MeiliBridgeError;
+use std::error::Error;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, warn};
-use std::error::Error;
 
 type Result<T> = std::result::Result<T, MeiliBridgeError>;
 
@@ -73,7 +73,7 @@ where
                 }
 
                 attempt += 1;
-                
+
                 // Calculate delay with optional jitter
                 let mut actual_delay = delay_ms;
                 if config.jitter {
@@ -84,11 +84,7 @@ where
 
                 warn!(
                     "{} failed (attempt {}/{}): {}. Retrying in {}ms...",
-                    operation_name,
-                    attempt,
-                    config.max_retries,
-                    err,
-                    actual_delay
+                    operation_name, attempt, config.max_retries, err, actual_delay
                 );
 
                 sleep(Duration::from_millis(actual_delay)).await;
@@ -133,19 +129,19 @@ lazy_static::lazy_static! {
 impl Retryable for tokio_postgres::Error {
     fn is_retryable(&self) -> bool {
         use tokio_postgres::error::SqlState;
-        
+
         // Check for retryable SQL states
         if let Some(code) = self.code() {
             matches!(
                 code,
                 &SqlState::CONNECTION_EXCEPTION
-                | &SqlState::CONNECTION_DOES_NOT_EXIST
-                | &SqlState::CONNECTION_FAILURE
-                | &SqlState::SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION
-                | &SqlState::TRANSACTION_ROLLBACK
-                | &SqlState::LOCK_NOT_AVAILABLE
-                | &SqlState::T_R_DEADLOCK_DETECTED
-                | &SqlState::T_R_SERIALIZATION_FAILURE
+                    | &SqlState::CONNECTION_DOES_NOT_EXIST
+                    | &SqlState::CONNECTION_FAILURE
+                    | &SqlState::SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION
+                    | &SqlState::TRANSACTION_ROLLBACK
+                    | &SqlState::LOCK_NOT_AVAILABLE
+                    | &SqlState::T_R_DEADLOCK_DETECTED
+                    | &SqlState::T_R_SERIALIZATION_FAILURE
             )
         } else if self.is_closed() {
             // Connection closed errors are retryable
@@ -158,13 +154,13 @@ impl Retryable for tokio_postgres::Error {
                     matches!(
                         io_err.kind(),
                         std::io::ErrorKind::ConnectionRefused
-                        | std::io::ErrorKind::ConnectionReset
-                        | std::io::ErrorKind::ConnectionAborted
-                        | std::io::ErrorKind::NotConnected
-                        | std::io::ErrorKind::BrokenPipe
-                        | std::io::ErrorKind::TimedOut
-                        | std::io::ErrorKind::Interrupted
-                        | std::io::ErrorKind::UnexpectedEof
+                            | std::io::ErrorKind::ConnectionReset
+                            | std::io::ErrorKind::ConnectionAborted
+                            | std::io::ErrorKind::NotConnected
+                            | std::io::ErrorKind::BrokenPipe
+                            | std::io::ErrorKind::TimedOut
+                            | std::io::ErrorKind::Interrupted
+                            | std::io::ErrorKind::UnexpectedEof
                     )
                 })
                 .unwrap_or(false)
@@ -177,14 +173,14 @@ impl Retryable for std::io::Error {
         matches!(
             self.kind(),
             std::io::ErrorKind::ConnectionRefused
-            | std::io::ErrorKind::ConnectionReset
-            | std::io::ErrorKind::ConnectionAborted
-            | std::io::ErrorKind::NotConnected
-            | std::io::ErrorKind::BrokenPipe
-            | std::io::ErrorKind::TimedOut
-            | std::io::ErrorKind::Interrupted
-            | std::io::ErrorKind::UnexpectedEof
-            | std::io::ErrorKind::WouldBlock
+                | std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::ConnectionAborted
+                | std::io::ErrorKind::NotConnected
+                | std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::TimedOut
+                | std::io::ErrorKind::Interrupted
+                | std::io::ErrorKind::UnexpectedEof
+                | std::io::ErrorKind::WouldBlock
         )
     }
 }
@@ -197,10 +193,10 @@ impl Retryable for crate::error::MeiliBridgeError {
             crate::error::MeiliBridgeError::Database(_) => true,
             crate::error::MeiliBridgeError::Meilisearch(msg) => {
                 // Meilisearch errors that indicate temporary issues
-                msg.contains("timeout") || 
-                msg.contains("connection") || 
-                msg.contains("unavailable") ||
-                msg.contains("Too Many Requests")
+                msg.contains("timeout")
+                    || msg.contains("connection")
+                    || msg.contains("unavailable")
+                    || msg.contains("Too Many Requests")
             }
             // Configuration and validation errors are not retryable
             crate::error::MeiliBridgeError::Configuration(_) => false,

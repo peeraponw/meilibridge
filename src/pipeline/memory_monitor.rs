@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use crate::error::Result;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 use tracing::{info, warn};
-use crate::error::Result;
 
 /// Tracks memory usage and enforces limits
 #[derive(Clone)]
@@ -33,37 +33,37 @@ impl MemoryMonitor {
             shutdown_tx: None,
         }
     }
-    
+
     /// Stop the memory monitor
     pub async fn stop(&mut self) {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(()).await;
         }
     }
-    
+
     /// Start background monitoring task
     pub fn start_monitoring(&mut self) -> mpsc::Receiver<MemoryPressureEvent> {
         let (tx, rx) = mpsc::channel(10);
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
         self.shutdown_tx = Some(shutdown_tx);
-        
+
         let current_queue = self.current_queue_memory.clone();
         let current_checkpoint = self.current_checkpoint_memory.clone();
         let max_queue = self.max_queue_memory;
         let max_checkpoint = self.max_checkpoint_memory;
-        
+
         tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(1));
-            
+
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
                         let queue_usage = current_queue.load(Ordering::Relaxed);
                         let checkpoint_usage = current_checkpoint.load(Ordering::Relaxed);
-                        
+
                         let queue_percent = (queue_usage as f64 / max_queue as f64) * 100.0;
                         let checkpoint_percent = (checkpoint_usage as f64 / max_checkpoint as f64) * 100.0;
-                        
+
                         // Check for memory pressure
                         if queue_percent > 90.0 {
                             warn!(
@@ -74,7 +74,7 @@ impl MemoryMonitor {
                             );
                             let _ = tx.send(MemoryPressureEvent::HighQueueMemory(queue_percent)).await;
                         }
-                        
+
                         if checkpoint_percent > 90.0 {
                             warn!(
                                 "High checkpoint memory usage: {:.1}% ({:.2} MB / {:.2} MB)",
@@ -92,50 +92,60 @@ impl MemoryMonitor {
                 }
             }
         });
-        
+
         rx
     }
-    
+
     /// Track memory allocation for an event
     pub fn track_event_memory(&self, size_bytes: u64) -> Result<MemoryAllocation> {
-        let new_total = self.current_queue_memory.fetch_add(size_bytes, Ordering::SeqCst) + size_bytes;
-        
+        let new_total = self
+            .current_queue_memory
+            .fetch_add(size_bytes, Ordering::SeqCst)
+            + size_bytes;
+
         if new_total > self.max_queue_memory {
             // Rollback the allocation
-            self.current_queue_memory.fetch_sub(size_bytes, Ordering::SeqCst);
-            return Err(crate::error::MeiliBridgeError::ResourceExhausted(
-                format!("Queue memory limit exceeded: {} MB", self.max_queue_memory / 1_048_576)
-            ));
+            self.current_queue_memory
+                .fetch_sub(size_bytes, Ordering::SeqCst);
+            return Err(crate::error::MeiliBridgeError::ResourceExhausted(format!(
+                "Queue memory limit exceeded: {} MB",
+                self.max_queue_memory / 1_048_576
+            )));
         }
-        
+
         self.event_count.fetch_add(1, Ordering::Relaxed);
-        
+
         Ok(MemoryAllocation {
             monitor: self.clone(),
             size_bytes,
             allocation_type: AllocationType::Queue,
         })
     }
-    
+
     /// Track memory allocation for checkpoint
     pub fn track_checkpoint_memory(&self, size_bytes: u64) -> Result<MemoryAllocation> {
-        let new_total = self.current_checkpoint_memory.fetch_add(size_bytes, Ordering::SeqCst) + size_bytes;
-        
+        let new_total = self
+            .current_checkpoint_memory
+            .fetch_add(size_bytes, Ordering::SeqCst)
+            + size_bytes;
+
         if new_total > self.max_checkpoint_memory {
             // Rollback the allocation
-            self.current_checkpoint_memory.fetch_sub(size_bytes, Ordering::SeqCst);
-            return Err(crate::error::MeiliBridgeError::ResourceExhausted(
-                format!("Checkpoint memory limit exceeded: {} MB", self.max_checkpoint_memory / 1_048_576)
-            ));
+            self.current_checkpoint_memory
+                .fetch_sub(size_bytes, Ordering::SeqCst);
+            return Err(crate::error::MeiliBridgeError::ResourceExhausted(format!(
+                "Checkpoint memory limit exceeded: {} MB",
+                self.max_checkpoint_memory / 1_048_576
+            )));
         }
-        
+
         Ok(MemoryAllocation {
             monitor: self.clone(),
             size_bytes,
             allocation_type: AllocationType::Checkpoint,
         })
     }
-    
+
     /// Get current memory statistics
     pub fn get_stats(&self) -> MemoryStats {
         MemoryStats {
@@ -146,23 +156,25 @@ impl MemoryMonitor {
             event_count: self.event_count.load(Ordering::Relaxed),
         }
     }
-    
+
     /// Check if we should apply backpressure
     pub fn should_apply_backpressure(&self) -> bool {
         let queue_usage = self.current_queue_memory.load(Ordering::Relaxed);
         let queue_percent = (queue_usage as f64 / self.max_queue_memory as f64) * 100.0;
         queue_percent > 80.0
     }
-    
+
     /// Release memory when dropping allocation
     fn release_memory(&self, size_bytes: u64, allocation_type: AllocationType) {
         match allocation_type {
             AllocationType::Queue => {
-                self.current_queue_memory.fetch_sub(size_bytes, Ordering::SeqCst);
+                self.current_queue_memory
+                    .fetch_sub(size_bytes, Ordering::SeqCst);
                 self.event_count.fetch_sub(1, Ordering::Relaxed);
             }
             AllocationType::Checkpoint => {
-                self.current_checkpoint_memory.fetch_sub(size_bytes, Ordering::SeqCst);
+                self.current_checkpoint_memory
+                    .fetch_sub(size_bytes, Ordering::SeqCst);
             }
         }
     }
@@ -177,7 +189,8 @@ pub struct MemoryAllocation {
 
 impl Drop for MemoryAllocation {
     fn drop(&mut self) {
-        self.monitor.release_memory(self.size_bytes, self.allocation_type);
+        self.monitor
+            .release_memory(self.size_bytes, self.allocation_type);
     }
 }
 
@@ -208,7 +221,7 @@ impl MemoryStats {
     pub fn queue_usage_percent(&self) -> f64 {
         (self.queue_memory_bytes as f64 / self.max_queue_memory_bytes as f64) * 100.0
     }
-    
+
     pub fn checkpoint_usage_percent(&self) -> f64 {
         (self.checkpoint_memory_bytes as f64 / self.max_checkpoint_memory_bytes as f64) * 100.0
     }

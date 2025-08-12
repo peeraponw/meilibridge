@@ -48,15 +48,12 @@ impl StatementCache {
     }
 
     /// Get or prepare a statement
-    pub async fn get_or_prepare(
-        &self,
-        client: &Client,
-        query: &str,
-    ) -> Result<Statement> {
+    pub async fn get_or_prepare(&self, client: &Client, query: &str) -> Result<Statement> {
         if !self.config.enabled {
             // Cache disabled, prepare directly
-            return client.prepare(query).await
-                .map_err(|e| MeiliBridgeError::Source(format!("Failed to prepare statement: {}", e)));
+            return client.prepare(query).await.map_err(|e| {
+                MeiliBridgeError::Source(format!("Failed to prepare statement: {}", e))
+            });
         }
 
         // Check cache first
@@ -73,12 +70,14 @@ impl StatementCache {
         *self.metrics.misses.write().await += 1;
         debug!("Statement cache miss for query: {}", truncate_query(query));
 
-        let stmt = client.prepare(query).await
+        let stmt = client
+            .prepare(query)
+            .await
             .map_err(|e| MeiliBridgeError::Source(format!("Failed to prepare statement: {}", e)))?;
 
         // Add to cache
         let mut cache = self.cache.write().await;
-        
+
         // Check if we need to evict
         if cache.len() >= self.config.max_size {
             // Simple eviction: remove the first entry (oldest)
@@ -119,7 +118,10 @@ impl StatementCache {
     pub async fn invalidate(&self, query: &str) {
         let mut cache = self.cache.write().await;
         if cache.remove(query).is_some() {
-            debug!("Invalidated cached statement for query: {}", truncate_query(query));
+            debug!(
+                "Invalidated cached statement for query: {}",
+                truncate_query(query)
+            );
         }
     }
 
@@ -194,7 +196,9 @@ impl CachedConnection {
         T: ?Sized,
     {
         let stmt = self.cache.get_or_prepare(&self.client, query).await?;
-        self.client.query(&stmt, params).await
+        self.client
+            .query(&stmt, params)
+            .await
             .map_err(|e| MeiliBridgeError::Source(format!("Query execution failed: {}", e)))
     }
 
@@ -208,7 +212,9 @@ impl CachedConnection {
         T: ?Sized,
     {
         let stmt = self.cache.get_or_prepare(&self.client, query).await?;
-        self.client.query_opt(&stmt, params).await
+        self.client
+            .query_opt(&stmt, params)
+            .await
             .map_err(|e| MeiliBridgeError::Source(format!("Query execution failed: {}", e)))
     }
 
@@ -222,7 +228,9 @@ impl CachedConnection {
         T: ?Sized,
     {
         let stmt = self.cache.get_or_prepare(&self.client, query).await?;
-        self.client.query_one(&stmt, params).await
+        self.client
+            .query_one(&stmt, params)
+            .await
             .map_err(|e| MeiliBridgeError::Source(format!("Query execution failed: {}", e)))
     }
 
@@ -233,7 +241,9 @@ impl CachedConnection {
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> Result<u64> {
         let stmt = self.cache.get_or_prepare(&self.client, query).await?;
-        self.client.execute(&stmt, params).await
+        self.client
+            .execute(&stmt, params)
+            .await
             .map_err(|e| MeiliBridgeError::Source(format!("Statement execution failed: {}", e)))
     }
 
@@ -247,4 +257,3 @@ impl CachedConnection {
         self.cache.get_stats().await
     }
 }
-

@@ -49,11 +49,9 @@ impl EventFilter {
 
                 // Check conditions for full sync
                 if let Some(obj) = data.as_object() {
-                    let data_map: HashMap<String, Value> = obj
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    
+                    let data_map: HashMap<String, Value> =
+                        obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
                     if !self.check_conditions(&data_map) {
                         debug!("Full sync record filtered out by conditions");
                         return Ok(false);
@@ -63,7 +61,9 @@ impl EventFilter {
                 Ok(true)
             }
             // Process individual event types
-            Event::Insert { table, new_data, .. } => {
+            Event::Insert {
+                table, new_data, ..
+            } => {
                 if !self.is_table_allowed(table) {
                     return Ok(false);
                 }
@@ -71,16 +71,17 @@ impl EventFilter {
                     return Ok(false);
                 }
                 if let Some(obj) = new_data.as_object() {
-                    let data_map: HashMap<String, Value> = obj.iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
+                    let data_map: HashMap<String, Value> =
+                        obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                     if !self.check_conditions(&data_map) {
                         return Ok(false);
                     }
                 }
                 Ok(true)
             }
-            Event::Update { table, new_data, .. } => {
+            Event::Update {
+                table, new_data, ..
+            } => {
                 if !self.is_table_allowed(table) {
                     return Ok(false);
                 }
@@ -88,16 +89,17 @@ impl EventFilter {
                     return Ok(false);
                 }
                 if let Some(obj) = new_data.as_object() {
-                    let data_map: HashMap<String, Value> = obj.iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
+                    let data_map: HashMap<String, Value> =
+                        obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                     if !self.check_conditions(&data_map) {
                         return Ok(false);
                     }
                 }
                 Ok(true)
             }
-            Event::Delete { table, old_data, .. } => {
+            Event::Delete {
+                table, old_data, ..
+            } => {
                 if !self.is_table_allowed(table) {
                     return Ok(false);
                 }
@@ -105,9 +107,8 @@ impl EventFilter {
                     return Ok(false);
                 }
                 if let Some(obj) = old_data.as_object() {
-                    let data_map: HashMap<String, Value> = obj.iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
+                    let data_map: HashMap<String, Value> =
+                        obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                     if !self.check_conditions(&data_map) {
                         return Ok(false);
                     }
@@ -141,12 +142,14 @@ impl EventFilter {
     /// Check if an event type is allowed
     fn is_event_type_allowed(&self, event_type: &EventType) -> bool {
         if let Some(allowed_types) = &self.config.event_types {
-            allowed_types.iter().any(|t| match (t.as_str(), event_type) {
-                ("create", EventType::Create) => true,
-                ("update", EventType::Update) => true,
-                ("delete", EventType::Delete) => true,
-                _ => false,
-            })
+            allowed_types
+                .iter()
+                .any(|t| match (t.as_str(), event_type) {
+                    ("create", EventType::Create) => true,
+                    ("update", EventType::Update) => true,
+                    ("delete", EventType::Delete) => true,
+                    _ => false,
+                })
         } else {
             // If no filter specified, allow all event types
             true
@@ -166,14 +169,14 @@ impl EventFilter {
     }
 
     /// Evaluate a single condition
-    fn evaluate_condition(&self, condition: &crate::config::pipeline::Condition, data: &HashMap<String, Value>) -> bool {
+    fn evaluate_condition(
+        &self,
+        condition: &crate::config::pipeline::Condition,
+        data: &HashMap<String, Value>,
+    ) -> bool {
         match condition {
-            Condition::Equals { field, value } => {
-                data.get(field).map_or(false, |v| v == value)
-            }
-            Condition::NotEquals { field, value } => {
-                data.get(field).map_or(true, |v| v != value)
-            }
+            Condition::Equals { field, value } => data.get(field).map_or(false, |v| v == value),
+            Condition::NotEquals { field, value } => data.get(field).map_or(true, |v| v != value),
             Condition::Contains { field, value } => {
                 if let Some(Value::String(s)) = data.get(field) {
                     if let Value::String(pattern) = value {
@@ -198,12 +201,8 @@ impl EventFilter {
                     false
                 }
             }
-            Condition::IsNull { field } => {
-                data.get(field).map_or(true, |v| v.is_null())
-            }
-            Condition::IsNotNull { field } => {
-                data.get(field).map_or(false, |v| !v.is_null())
-            }
+            Condition::IsNull { field } => data.get(field).map_or(true, |v| v.is_null()),
+            Condition::IsNotNull { field } => data.get(field).map_or(false, |v| !v.is_null()),
             crate::config::pipeline::Condition::And { conditions } => {
                 conditions.iter().all(|c| self.evaluate_condition(c, data))
             }

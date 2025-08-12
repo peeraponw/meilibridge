@@ -6,7 +6,7 @@ use thiserror::Error;
 pub enum MeiliBridgeError {
     #[error("Configuration error: {0}")]
     Config(String),
-    
+
     #[error("Configuration error: {0}")]
     Configuration(String),
 
@@ -42,16 +42,16 @@ pub enum MeiliBridgeError {
 
     #[error("Channel receive error")]
     ChannelReceive,
-    
+
     #[error("Pipeline error: {0}")]
     Pipeline(String),
-    
+
     #[error("Not found: {0}")]
     NotFound(String),
-    
+
     #[error("Redis error: {0}")]
     Redis(String),
-    
+
     #[error("Resource exhausted: {0}")]
     ResourceExhausted(String),
 }

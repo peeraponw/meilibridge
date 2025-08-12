@@ -21,7 +21,7 @@ impl<'a> TestContainers<'a> {
             meilisearch: None,
         }
     }
-    
+
     pub fn postgres_url(&self) -> String {
         if let Some(container) = &self.postgres {
             let port = container.get_host_port_ipv4(5432);
@@ -30,7 +30,7 @@ impl<'a> TestContainers<'a> {
             panic!("PostgreSQL container not started");
         }
     }
-    
+
     pub fn redis_url(&self) -> String {
         if let Some(container) = &self.redis {
             let port = container.get_host_port_ipv4(6379);
@@ -39,7 +39,7 @@ impl<'a> TestContainers<'a> {
             panic!("Redis container not started");
         }
     }
-    
+
     pub fn meilisearch_url(&self) -> String {
         if let Some(container) = &self.meilisearch {
             let port = container.get_host_port_ipv4(7700);
@@ -91,7 +91,7 @@ impl Image for MeilisearchImage {
     fn env_vars(&self) -> Box<dyn Iterator<Item = (&String, &String)> + '_> {
         Box::new(self.env_vars.iter().map(|(k, v)| (k, v)))
     }
-    
+
     fn expose_ports(&self) -> Vec<u16> {
         vec![7700]
     }
@@ -101,7 +101,6 @@ impl Image for MeilisearchImage {
 pub fn start_postgres(docker: &Cli) -> TestContainer<'_, Postgres> {
     docker.run(Postgres::default())
 }
-
 
 // Custom PostgreSQL image with CDC support (wal_level=logical)
 #[derive(Debug, Clone)]
@@ -142,7 +141,7 @@ impl Image for PostgresCDCImage {
     fn env_vars(&self) -> Box<dyn Iterator<Item = (&String, &String)> + '_> {
         Box::new(self.env_vars.iter().map(|(k, v)| (k, v)))
     }
-    
+
     fn expose_ports(&self) -> Vec<u16> {
         vec![5432]
     }
@@ -166,7 +165,7 @@ pub fn start_meilisearch(docker: &Cli) -> TestContainer<'_, MeilisearchImage> {
 pub async fn wait_for_postgres(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let max_retries = 30;
     let mut retries = 0;
-    
+
     loop {
         match tokio_postgres::connect(url, tokio_postgres::NoTls).await {
             Ok((client, connection)) => {
@@ -176,7 +175,7 @@ pub async fn wait_for_postgres(url: &str) -> Result<(), Box<dyn std::error::Erro
                         eprintln!("connection error: {}", e);
                     }
                 });
-                
+
                 // Test connection
                 if client.simple_query("SELECT 1").await.is_ok() {
                     return Ok(());
@@ -196,7 +195,7 @@ pub async fn wait_for_postgres(url: &str) -> Result<(), Box<dyn std::error::Erro
 pub async fn wait_for_redis(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let max_retries = 30;
     let mut retries = 0;
-    
+
     loop {
         match redis::Client::open(url) {
             Ok(client) => {
@@ -208,7 +207,7 @@ pub async fn wait_for_redis(url: &str) -> Result<(), Box<dyn std::error::Error>>
             }
             Err(_) => {}
         }
-        
+
         retries += 1;
         if retries >= max_retries {
             return Err("Redis failed to start".into());
@@ -220,10 +219,10 @@ pub async fn wait_for_redis(url: &str) -> Result<(), Box<dyn std::error::Error>>
 pub async fn wait_for_meilisearch(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let max_retries = 30;
     let mut retries = 0;
-    
+
     let client = reqwest::Client::new();
     println!("Waiting for Meilisearch at {}...", url);
-    
+
     loop {
         match client.get(&format!("{}/health", url)).send().await {
             Ok(response) => {
@@ -235,14 +234,21 @@ pub async fn wait_for_meilisearch(url: &str) -> Result<(), Box<dyn std::error::E
             }
             Err(e) => {
                 if retries % 5 == 0 {
-                    println!("Waiting for Meilisearch... (attempt {}/{}): {}", retries + 1, max_retries, e);
+                    println!(
+                        "Waiting for Meilisearch... (attempt {}/{}): {}",
+                        retries + 1,
+                        max_retries,
+                        e
+                    );
                 }
             }
         }
-        
+
         retries += 1;
         if retries >= max_retries {
-            return Err(format!("Meilisearch failed to start after {} attempts", max_retries).into());
+            return Err(
+                format!("Meilisearch failed to start after {} attempts", max_retries).into(),
+            );
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }

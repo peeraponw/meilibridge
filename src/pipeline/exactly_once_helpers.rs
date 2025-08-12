@@ -23,63 +23,78 @@ pub fn create_dedup_key_from_event(event: &Event) -> DeduplicationKey {
                 Some(Position::PostgreSQL { lsn }) => lsn.clone(),
                 _ => String::new(),
             };
-            
+
             let mut key = DeduplicationKey::new(
                 lsn,
                 None, // XID not available in current model
                 cdc_event.table.clone(),
             );
-            
+
             // Add primary key if available (assuming 'id' field)
             if let Some(pk_value) = cdc_event.data.get("id") {
                 key = key.with_primary_key(pk_value.to_string());
             }
-            
+
             key
         }
-        Event::Insert { table, new_data, position, .. } => {
+        Event::Insert {
+            table,
+            new_data,
+            position,
+            ..
+        } => {
             let lsn = match position {
                 Some(Position::PostgreSQL { lsn }) => lsn.clone(),
                 _ => String::new(),
             };
-            
+
             let mut key = DeduplicationKey::new(lsn, None, table.clone());
-            
+
             // Add primary key if available
             if let Some(id) = new_data.get("id") {
                 key = key.with_primary_key(id.to_string());
             }
-            
+
             key
         }
-        Event::Update { table, new_data, position, .. } => {
+        Event::Update {
+            table,
+            new_data,
+            position,
+            ..
+        } => {
             let lsn = match position {
                 Some(Position::PostgreSQL { lsn }) => lsn.clone(),
                 _ => String::new(),
             };
-            
+
             let mut key = DeduplicationKey::new(lsn, None, table.clone());
-            
+
             // Add primary key if available
             if let Some(id) = new_data.get("id") {
                 key = key.with_primary_key(id.to_string());
             }
-            
+
             key
         }
-        Event::Delete { table, old_data, position, .. } => {
+        Event::Delete {
+            table,
+            old_data,
+            position,
+            ..
+        } => {
             let lsn = match position {
                 Some(Position::PostgreSQL { lsn }) => lsn.clone(),
                 _ => String::new(),
             };
-            
+
             let mut key = DeduplicationKey::new(lsn, None, table.clone());
-            
+
             // Add primary key if available
             if let Some(id) = old_data.get("id") {
                 key = key.with_primary_key(id.to_string());
             }
-            
+
             key
         }
         _ => DeduplicationKey::new(String::new(), None, String::new()),

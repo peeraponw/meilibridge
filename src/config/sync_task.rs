@@ -1,5 +1,5 @@
+use crate::config::{FilterConfig, MappingConfig, TransformConfig};
 use serde::{Deserialize, Serialize};
-use crate::config::{FilterConfig, TransformConfig, MappingConfig};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SyncTaskConfig {
@@ -40,11 +40,11 @@ pub struct SyncTaskConfig {
     /// Sync options
     #[serde(default)]
     pub options: SyncOptions,
-    
+
     /// Whether to auto-start this task
     #[serde(default = "default_true")]
     pub auto_start: Option<bool>,
-    
+
     /// Soft delete configuration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub soft_delete: Option<SoftDeleteConfig>,
@@ -155,14 +155,14 @@ fn default_source_name() -> String {
 pub struct SoftDeleteConfig {
     /// Field name to check for soft delete status
     pub field: String,
-    
+
     /// Values that indicate a soft delete
     pub delete_values: Vec<serde_json::Value>,
-    
+
     /// Whether to handle soft deletes during full sync
     #[serde(default = "default_true_bool")]
     pub handle_on_full_sync: bool,
-    
+
     /// Whether to handle soft deletes during CDC
     #[serde(default = "default_true_bool")]
     pub handle_on_cdc: bool,

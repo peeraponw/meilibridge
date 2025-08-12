@@ -86,16 +86,22 @@ impl ConfigLoader {
                 _ => {}
             }
         }
-        
+
         // Validate sources configuration
         for named_source in &config.sources {
             match &named_source.config {
                 super::SourceConfig::PostgreSQL(pg) => {
                     if pg.pool.max_size < pg.pool.min_idle {
-                        errors.push(format!("PostgreSQL source '{}' pool max_size must be >= min_idle", named_source.name));
+                        errors.push(format!(
+                            "PostgreSQL source '{}' pool max_size must be >= min_idle",
+                            named_source.name
+                        ));
                     }
                     if pg.pool.max_size == 0 {
-                        errors.push(format!("PostgreSQL source '{}' pool max_size must be > 0", named_source.name));
+                        errors.push(format!(
+                            "PostgreSQL source '{}' pool max_size must be > 0",
+                            named_source.name
+                        ));
                     }
                 }
                 _ => {}

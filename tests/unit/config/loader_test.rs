@@ -28,7 +28,8 @@ meilisearch:
 
 redis:
   url: redis://localhost:6379
-"#.to_string()
+"#
+        .to_string()
     }
 
     #[test]
@@ -40,7 +41,7 @@ redis:
         // Note: In the actual implementation, we would load and parse the config
         // For now, just verify the file was created
         assert!(config_path.exists());
-        
+
         let content = fs::read_to_string(&config_path).unwrap();
         assert!(content.contains("postgresql"));
         assert!(content.contains("users_index"));
@@ -90,7 +91,7 @@ source:
 
         // In actual implementation, env vars would be substituted
         assert!(config_path.exists());
-        
+
         std::env::remove_var("TEST_DB_HOST");
         std::env::remove_var("TEST_DB_PASS");
     }

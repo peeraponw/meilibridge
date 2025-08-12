@@ -21,19 +21,19 @@ pub struct MeilisearchConfig {
     /// Index settings template
     #[serde(default)]
     pub index_settings: IndexSettings,
-    
+
     /// Default primary key field name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_key: Option<String>,
-    
+
     /// Batch size for bulk operations
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
-    
+
     /// Auto-create indexes if they don't exist
     #[serde(default = "default_auto_create_index")]
     pub auto_create_index: bool,
-    
+
     /// Circuit breaker configuration
     #[serde(default)]
     pub circuit_breaker: CircuitBreakerConfig,
@@ -44,19 +44,19 @@ pub struct CircuitBreakerConfig {
     /// Enable circuit breaker
     #[serde(default = "default_circuit_breaker_enabled")]
     pub enabled: bool,
-    
+
     /// Error rate threshold (0.0 - 1.0)
     #[serde(default = "default_error_rate")]
     pub error_rate: f64,
-    
+
     /// Minimum request count before evaluating
     #[serde(default = "default_min_request_count")]
     pub min_request_count: u64,
-    
+
     /// Consecutive failures to open circuit
     #[serde(default = "default_consecutive_failures")]
     pub consecutive_failures: u64,
-    
+
     /// Timeout before half-open state (seconds)
     #[serde(default = "default_circuit_timeout")]
     pub timeout_secs: u64,

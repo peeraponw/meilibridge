@@ -69,7 +69,7 @@ pub struct SystemHealth {
 pub trait HealthCheck: Send + Sync {
     /// Perform health check
     async fn check_health(&self) -> HealthCheckResult;
-    
+
     /// Get component name
     fn component_name(&self) -> &'static str;
 }
@@ -104,7 +104,7 @@ impl HealthRegistry {
         // Check all components
         for (name, component) in components.iter() {
             let result = component.check_health().await;
-            
+
             // Update overall status based on component status
             match result.status {
                 HealthStatus::Unhealthy => overall_status = HealthStatus::Unhealthy,
@@ -115,7 +115,7 @@ impl HealthRegistry {
                 }
                 HealthStatus::Healthy => {}
             }
-            
+
             health_results.insert(name.clone(), result);
         }
 
@@ -159,10 +159,10 @@ impl HealthCheck for PostgresHealthCheck {
                 return HealthCheckResult::unhealthy(format!("Failed to connect: {}", e));
             }
         }
-        
+
         // Now check health with read lock
         let connector = self.connector.read().await;
-        
+
         // Try to get a client from the pool
         match connector.get_client().await {
             Ok(client) => {
@@ -172,7 +172,10 @@ impl HealthCheck for PostgresHealthCheck {
                         let pool = connector.get_pool();
                         HealthCheckResult::healthy()
                             .with_detail("pool_size", serde_json::json!(pool.status().size))
-                            .with_detail("pool_available", serde_json::json!(pool.status().available))
+                            .with_detail(
+                                "pool_available",
+                                serde_json::json!(pool.status().available),
+                            )
                     }
                     Err(e) => HealthCheckResult::unhealthy(format!("Query failed: {}", e)),
                 }
@@ -200,16 +203,20 @@ impl MeilisearchHealthCheck {
 #[async_trait::async_trait]
 impl HealthCheck for MeilisearchHealthCheck {
     async fn check_health(&self) -> HealthCheckResult {
-        let client = match meilisearch_sdk::client::Client::new(&self.config.url, self.config.api_key.as_deref()) {
+        let client = match meilisearch_sdk::client::Client::new(
+            &self.config.url,
+            self.config.api_key.as_deref(),
+        ) {
             Ok(client) => client,
-            Err(e) => return HealthCheckResult::unhealthy(format!("Failed to create client: {}", e)),
+            Err(e) => {
+                return HealthCheckResult::unhealthy(format!("Failed to create client: {}", e))
+            }
         };
 
         // Check Meilisearch health endpoint
         match client.health().await {
             Ok(health) => {
-                HealthCheckResult::healthy()
-                    .with_detail("status", serde_json::json!(health.status))
+                HealthCheckResult::healthy().with_detail("status", serde_json::json!(health.status))
             }
             Err(e) => HealthCheckResult::unhealthy(format!("Health check failed: {}", e)),
         }
@@ -240,32 +247,39 @@ impl HealthCheck for RedisHealthCheck {
                 match client.get_tokio_connection().await {
                     Ok(mut conn) => {
                         // Execute a PING command
-                        let ping_result: Result<String, redis::RedisError> = redis::cmd("PING")
-                            .query_async(&mut conn)
-                            .await;
-                        
+                        let ping_result: Result<String, redis::RedisError> =
+                            redis::cmd("PING").query_async(&mut conn).await;
+
                         match ping_result {
                             Ok(response) if response == "PONG" => {
                                 // Try to get server info for more details
-                                let info_result: Result<String, redis::RedisError> = redis::cmd("INFO")
-                                    .arg("server")
-                                    .query_async(&mut conn)
-                                    .await;
-                                
+                                let info_result: Result<String, redis::RedisError> =
+                                    redis::cmd("INFO")
+                                        .arg("server")
+                                        .query_async(&mut conn)
+                                        .await;
+
                                 let mut result = HealthCheckResult::healthy();
-                                
+
                                 if let Ok(info) = info_result {
                                     // Parse Redis version from info
-                                    if let Some(version_line) = info.lines().find(|l| l.starts_with("redis_version:")) {
+                                    if let Some(version_line) =
+                                        info.lines().find(|l| l.starts_with("redis_version:"))
+                                    {
                                         if let Some(version) = version_line.split(':').nth(1) {
-                                            result = result.with_detail("version", serde_json::json!(version.trim()));
+                                            result = result.with_detail(
+                                                "version",
+                                                serde_json::json!(version.trim()),
+                                            );
                                         }
                                     }
                                 }
-                                
+
                                 result
                             }
-                            Ok(_) => HealthCheckResult::degraded("Unexpected PING response".to_string()),
+                            Ok(_) => {
+                                HealthCheckResult::degraded("Unexpected PING response".to_string())
+                            }
                             Err(e) => HealthCheckResult::unhealthy(format!("PING failed: {}", e)),
                         }
                     }
@@ -297,14 +311,16 @@ impl HealthCheck for ApiHealthCheck {
     async fn check_health(&self) -> HealthCheckResult {
         // Check if API server is responding
         let url = format!("http://127.0.0.1:{}/health", self.port);
-        
+
         match reqwest::get(&url).await {
             Ok(response) => {
                 if response.status().is_success() {
-                    HealthCheckResult::healthy()
-                        .with_detail("port", serde_json::json!(self.port))
+                    HealthCheckResult::healthy().with_detail("port", serde_json::json!(self.port))
                 } else {
-                    HealthCheckResult::degraded(format!("API returned status: {}", response.status()))
+                    HealthCheckResult::degraded(format!(
+                        "API returned status: {}",
+                        response.status()
+                    ))
                 }
             }
             Err(e) => {
@@ -319,4 +335,3 @@ impl HealthCheck for ApiHealthCheck {
         "api"
     }
 }
-

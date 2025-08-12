@@ -29,7 +29,7 @@ pub mod oids {
     pub const TIMETZ: u32 = 1266;
     pub const UUID: u32 = 2950;
     pub const JSONB: u32 = 3802;
-    
+
     // Array types (type OID + 1000 typically, but some exceptions)
     pub const BOOL_ARRAY: u32 = 1000;
     pub const BYTEA_ARRAY: u32 = 1001;
@@ -59,12 +59,12 @@ pub mod oids {
 pub fn decode_value(bytes: &[u8], type_oid: u32) -> Result<Value> {
     let text = str::from_utf8(bytes)
         .map_err(|e| MeiliBridgeError::Source(format!("Invalid UTF-8: {}", e)))?;
-    
+
     // Handle array types
     if is_array_type(type_oid) {
         return decode_array(text, type_oid);
     }
-    
+
     // Handle scalar types
     let value = match type_oid {
         oids::BOOL => json!(text == "t" || text == "true"),
@@ -122,7 +122,7 @@ pub fn decode_value(bytes: &[u8], type_oid: u32) -> Result<Value> {
             json!(text)
         }
     };
-    
+
     Ok(value)
 }
 
@@ -161,24 +161,24 @@ fn decode_array(text: &str, type_oid: u32) -> Result<Value> {
     if !text.starts_with('{') || !text.ends_with('}') {
         return Ok(json!(text)); // Not a valid array format
     }
-    
+
     let content = &text[1..text.len() - 1]; // Remove { and }
     if content.is_empty() {
         return Ok(json!([])); // Empty array
     }
-    
+
     let mut elements = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
     let mut escape_next = false;
-    
+
     for ch in content.chars() {
         if escape_next {
             current.push(ch);
             escape_next = false;
             continue;
         }
-        
+
         match ch {
             '\\' if in_quotes => escape_next = true,
             '"' => in_quotes = !in_quotes,
@@ -189,31 +189,31 @@ fn decode_array(text: &str, type_oid: u32) -> Result<Value> {
             _ => current.push(ch),
         }
     }
-    
+
     // Don't forget the last element
     if !current.is_empty() || content.ends_with(',') {
         elements.push(parse_array_element(&current, type_oid)?);
     }
-    
+
     Ok(json!(elements))
 }
 
 /// Parse a single array element based on the array type
 fn parse_array_element(element: &str, array_type_oid: u32) -> Result<Value> {
     let trimmed = element.trim();
-    
+
     // Handle NULL
     if trimmed == "NULL" {
         return Ok(json!(null));
     }
-    
+
     // Remove quotes if present
     let unquoted = if trimmed.starts_with('"') && trimmed.ends_with('"') {
         &trimmed[1..trimmed.len() - 1]
     } else {
         trimmed
     };
-    
+
     // Determine element type from array type
     let element_type_oid = match array_type_oid {
         oids::BOOL_ARRAY => oids::BOOL,
@@ -232,8 +232,7 @@ fn parse_array_element(element: &str, array_type_oid: u32) -> Result<Value> {
         oids::NUMERIC_ARRAY => oids::NUMERIC,
         _ => oids::TEXT, // Default to text for unknown array types
     };
-    
+
     // Decode the element value
     decode_value(unquoted.as_bytes(), element_type_oid)
 }
-
