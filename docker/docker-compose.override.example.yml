@@ -6,7 +6,7 @@ version: '3.8'
 services:
   # Example: Running MeiliBridge with custom ports
   meilibridge:
-    image: meilibridge:latest
+    image: binarytouch/meilibridge:latest
     container_name: meilibridge
     environment:
       # Keep all existing environment variables

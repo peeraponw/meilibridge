@@ -104,7 +104,7 @@ docker run -d \
   -e MEILISEARCH_URL="http://localhost:7700" \
   -e MEILISEARCH_API_KEY="your-api-key" \
   -p 7701:7701 \
-  meilibridge/meilibridge:latest
+  binarytouch/meilibridge:latest
 
 # Check health status
 curl http://localhost:7701/health
@@ -168,7 +168,7 @@ docker run -d \
   --name meilibridge \
   -v $(pwd)/config.yaml:/config.yaml \
   -p 7701:7701 \
-  meilibridge/meilibridge:latest --config /config.yaml
+  binarytouch/meilibridge:latest --config /config.yaml
 
 # Using binary
 ./meilibridge --config config.yaml

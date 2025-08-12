@@ -215,6 +215,7 @@ jobs:
       run: |
         cargo publish --allow-dirty --token $CARGO_REGISTRY_TOKEN
 
+
   # Build and push Docker images
   docker-release:
     name: Docker Release
@@ -237,7 +238,8 @@ jobs:
       with:
         context: .
         file: ./docker/Dockerfile
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
+        # Add linux/arm64 when needed - note this significantly increases build time
         push: true
         tags: |
           ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:${{ needs.validate-version.outputs.version_without_v }}
@@ -261,15 +263,25 @@ jobs:
       run: |
         VERSION="${{ needs.validate-version.outputs.version_without_v }}"
         
-        # Update README.md docker compose example
-        sed -i "s|image: .*/meilibridge:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:$VERSION|g" README.md
-        
-        # Update docker-compose.yaml
-        sed -i "s|image: .*/meilibridge:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:$VERSION|g" docker/compose.yaml
+        # Update Cargo.toml version
+        sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
         
         # Update CHANGELOG.md
         DATE=$(date +%Y-%m-%d)
         sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
+        
+        # Add example docker run command to README if not present
+        if ! grep -q "docker run.*meilibridge" README.md; then
+          echo "" >> README.md
+          echo "### Docker" >> README.md
+          echo '```bash' >> README.md
+          echo "docker run -d \\" >> README.md
+          echo "  --name meilibridge \\" >> README.md
+          echo "  -v ./config.yaml:/etc/meilibridge/config.yaml:ro \\" >> README.md
+          echo "  -p 7701:7701 \\" >> README.md
+          echo "  ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:$VERSION" >> README.md
+          echo '```' >> README.md
+        fi
     
     - name: Create Pull Request
       uses: peter-evans/create-pull-request@v5
@@ -279,9 +291,9 @@ jobs:
           This PR updates version references after the release of ${{ needs.validate-version.outputs.version }}.
           
           Changes:
-          - Updated Docker image references in README.md
-          - Updated Docker image version in docker-compose.yaml
+          - Updated version in Cargo.toml
           - Updated CHANGELOG.md with release date
+          - Added Docker run example to README.md (if not present)
           
           This is an automated PR created by the release workflow.
         branch: update-version-${{ needs.validate-version.outputs.version }}
