@@ -63,7 +63,7 @@ jobs:
     - name: Install cargo-license
       run: |
         if ! command -v cargo-license &> /dev/null; then
-          cargo install cargo-license
+          cargo install cargo-license@0.6.1
         fi
     
     - name: Check licenses
