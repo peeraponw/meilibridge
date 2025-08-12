@@ -46,12 +46,16 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     libpq5 \
-    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Note: The zlib CVE-2023-45853 only affects MiniZip functionality,
+# not the core zlib compression. Since we don't use MiniZip features,
+# this vulnerability doesn't affect MeiliBridge.
 
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash meilibridge
@@ -87,9 +91,10 @@ EXPOSE ${MEILIBRIDGE_METRICS_PORT}
 # Set working directory
 WORKDIR /var/lib/meilibridge
 
-# Health check (uses the configured port)
+# Health check - using wget which is smaller than curl
+# Or you could implement a health check command in meilibridge itself
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${MEILIBRIDGE_API_PORT:-7701}/health || exit 1
+    CMD /usr/local/bin/meilibridge health --port ${MEILIBRIDGE_API_PORT:-7701} || exit 1
 
 # Use the entrypoint script
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
