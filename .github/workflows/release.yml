@@ -241,15 +241,18 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  # Create release PR to update version references
+  # Update version references directly on main branch
   update-version-references:
     name: Update Version References
     needs: [validate-version, create-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        persist-credentials: true
     
     - name: Update version references
       run: |
@@ -275,19 +278,25 @@ jobs:
           echo '```' >> README.md
         fi
     
-    - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v5
-      with:
-        title: "chore: update version references to ${{ needs.validate-version.outputs.version }}"
-        body: |
-          This PR updates version references after the release of ${{ needs.validate-version.outputs.version }}.
-          
-          Changes:
-          - Updated version in Cargo.toml
-          - Updated CHANGELOG.md with release date
-          - Added Docker run example to README.md (if not present)
-          
-          This is an automated PR created by the release workflow.
-        branch: update-version-${{ needs.validate-version.outputs.version }}
-        commit-message: "chore: update version references to ${{ needs.validate-version.outputs.version }}"
-        delete-branch: true
+    - name: Configure Git
+      run: |
+        git config --global user.name "Github Actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    
+    - name: Commit and push changes
+      run: |
+        git add -A
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "chore: update version references to ${{ needs.validate-version.outputs.version }}
+
+        Updates version references after the release of ${{ needs.validate-version.outputs.version }}.
+        
+        Changes:
+        - Updated version in Cargo.toml
+        - Updated CHANGELOG.md with release date
+        - Added Docker run example to README.md (if not present)
+        [skip ci]"
+          git push origin main
+        fi
