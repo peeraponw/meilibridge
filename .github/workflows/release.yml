@@ -44,6 +44,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "version_without_v=${VERSION#v}" >> $GITHUB_OUTPUT
 
+
   # Run full test suite before release
   test:
     name: Pre-release Tests
@@ -113,6 +114,7 @@ jobs:
         path: |
           *.tar.gz
           *.zip
+
 
   # Create GitHub release
   create-release:
@@ -214,6 +216,7 @@ jobs:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       run: |
         cargo publish --allow-dirty --token $CARGO_REGISTRY_TOKEN
+
 
 
   # Build and push Docker images

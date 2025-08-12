@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
   pull_request:
     branches:
       - main
@@ -55,6 +53,7 @@ jobs:
             VERSION=${{ github.ref_name }}
             VCS_REF=${{ github.sha }}
 
+
       - name: Build and push Docker image (main)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: docker/build-push-action@v5
@@ -72,6 +71,7 @@ jobs:
             VERSION=${{ github.ref_name }}
             VCS_REF=${{ github.sha }}
           
+
       # Build ARM64 separately on native runners or skip for faster builds
       # Uncomment when ARM64 support is critical
       # - name: Build and push ARM64 Docker image
