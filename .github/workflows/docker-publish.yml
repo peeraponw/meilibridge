@@ -57,7 +57,7 @@ jobs:
         with:
           context: .
           file: ./docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -67,6 +67,25 @@ jobs:
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
             VERSION=${{ github.ref_name }}
             VCS_REF=${{ github.sha }}
+          
+      # Build ARM64 separately on native runners or skip for faster builds
+      # Uncomment when ARM64 support is critical
+      # - name: Build and push ARM64 Docker image
+      #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      #   uses: docker/build-push-action@v5
+      #   with:
+      #     context: .
+      #     file: ./docker/Dockerfile
+      #     platforms: linux/arm64
+      #     push: true
+      #     tags: ${{ steps.meta.outputs.tags }}
+      #     labels: ${{ steps.meta.outputs.labels }}
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+      #     build-args: |
+      #       BUILD_DATE=${{ github.event.head_commit.timestamp }}
+      #       VERSION=${{ github.ref_name }}
+      #       VCS_REF=${{ github.sha }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master

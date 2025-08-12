@@ -34,14 +34,13 @@ COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     cargo build --release && \
-    rm -rf src
+    rm -rf src target/release/build target/release/deps/*.d
 
 # Copy source code
 COPY src ./src
 
-# Build the application
-RUN touch src/main.rs && \
-    cargo build --release
+# Build the application (using cached dependencies)
+RUN cargo build --release
 
 # Runtime stage
 FROM debian:bookworm-slim
