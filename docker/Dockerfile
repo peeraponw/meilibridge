@@ -65,7 +65,7 @@ RUN mkdir -p /etc/meilibridge /var/lib/meilibridge /var/log/meilibridge && \
 COPY --from=builder /usr/src/meilibridge/target/release/meilibridge /usr/local/bin/meilibridge
 
 # Copy entrypoint script
-COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY ./docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Copy default configuration (optional)
