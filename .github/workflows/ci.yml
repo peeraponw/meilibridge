@@ -48,7 +48,6 @@ jobs:
         # This is documented in deny.toml
         cargo audit || (echo "::warning::Known security issue in protobuf 2.28.0 via prometheus dependency. Waiting for upstream fix." && exit 0)
 
-
   # License check for dependencies
   # TODO: Re-enable once cargo-deny or cargo-license support current Rust edition
   license-check:
@@ -60,7 +59,6 @@ jobs:
         echo "::warning::License check temporarily disabled"
         echo "Waiting for cargo-deny/cargo-license to support current Rust edition"
         echo "TODO: Re-enable once tooling is updated"
-
 
   # Quick checks that should pass before running expensive tests
   lint:
