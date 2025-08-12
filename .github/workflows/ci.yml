@@ -197,43 +197,11 @@ jobs:
     - name: Run unit tests (all features)
       run: cargo test --lib --verbose --all-features
 
-  # Integration tests - require external services
+  # Integration tests - use testcontainers
   integration-tests:
     name: Integration Tests
     needs: [lint, security-audit]
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_db
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-      
-      meilisearch:
-        image: getmeili/meilisearch:v1.6
-        env:
-          MEILI_MASTER_KEY: test_master_key
-          MEILI_NO_ANALYTICS: true
-        ports:
-          - 7700:7700
     
     steps:
     - uses: actions/checkout@v4
@@ -246,18 +214,8 @@ jobs:
     - name: Cache dependencies
       uses: Swatinem/rust-cache@v2
     
-    - name: Wait for services
-      run: |
-        timeout 30 bash -c 'until pg_isready -h localhost -p 5432; do sleep 1; done'
-        timeout 30 bash -c 'until nc -z localhost 6379; do sleep 1; done'
-        timeout 30 bash -c 'until curl -f http://localhost:7700/health; do sleep 1; done'
-    
     - name: Run integration tests
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-        REDIS_URL: redis://localhost:6379
-        MEILISEARCH_URL: http://localhost:7700
-        MEILISEARCH_API_KEY: test_master_key
         RUST_LOG: debug
       run: cargo test --test integration --verbose
 
@@ -299,43 +257,11 @@ jobs:
     - name: Run benchmarks
       run: cargo bench --no-run
 
-  # Coverage job - runs all tests with coverage
+  # Coverage job - runs unit tests with coverage
   coverage:
     name: Code Coverage
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_db
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-      
-      meilisearch:
-        image: getmeili/meilisearch:v1.6
-        env:
-          MEILI_MASTER_KEY: test_master_key
-          MEILI_NO_ANALYTICS: true
-        ports:
-          - 7700:7700
     
     steps:
     - uses: actions/checkout@v4
@@ -354,18 +280,8 @@ jobs:
           cargo install cargo-tarpaulin
         fi
     
-    - name: Wait for services
-      run: |
-        timeout 30 bash -c 'until pg_isready -h localhost -p 5432; do sleep 1; done'
-        timeout 30 bash -c 'until nc -z localhost 6379; do sleep 1; done'
-        timeout 30 bash -c 'until curl -f http://localhost:7700/health; do sleep 1; done'
-    
     - name: Generate coverage
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-        REDIS_URL: redis://localhost:6379
-        MEILISEARCH_URL: http://localhost:7700
-        MEILISEARCH_API_KEY: test_master_key
         RUST_LOG: error
       run: |
         # Run only library and unit tests with coverage
