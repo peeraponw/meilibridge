@@ -57,14 +57,17 @@ jobs:
     - name: Cache cargo-deny
       uses: actions/cache@v3
       with:
-        path: ~/.cargo/bin/cargo-deny
-        key: cargo-deny-${{ runner.os }}
+        path: ~/.local/bin/cargo-deny
+        key: cargo-deny-0.13.9-${{ runner.os }}
     
     - name: Install cargo-deny
       run: |
-        if ! command -v cargo-deny &> /dev/null; then
-          cargo install cargo-deny --version 0.14.24
+        mkdir -p ~/.local/bin
+        if [ ! -f ~/.local/bin/cargo-deny ]; then
+          # Use a pre-built binary to avoid compilation issues
+          curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.13.9/cargo-deny-0.13.9-x86_64-unknown-linux-musl.tar.gz | tar xz -C ~/.local/bin
         fi
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
     
     - name: Verify deny.toml exists
       run: |
@@ -246,7 +249,7 @@ jobs:
     - name: Wait for services
       run: |
         timeout 30 bash -c 'until pg_isready -h localhost -p 5432; do sleep 1; done'
-        timeout 30 bash -c 'until redis-cli -h localhost -p 6379 ping; do sleep 1; done'
+        timeout 30 bash -c 'until nc -z localhost 6379; do sleep 1; done'
         timeout 30 bash -c 'until curl -f http://localhost:7700/health; do sleep 1; done'
     
     - name: Run integration tests
@@ -354,7 +357,7 @@ jobs:
     - name: Wait for services
       run: |
         timeout 30 bash -c 'until pg_isready -h localhost -p 5432; do sleep 1; done'
-        timeout 30 bash -c 'until redis-cli -h localhost -p 6379 ping; do sleep 1; done'
+        timeout 30 bash -c 'until nc -z localhost 6379; do sleep 1; done'
         timeout 30 bash -c 'until curl -f http://localhost:7700/health; do sleep 1; done'
     
     - name: Generate coverage
