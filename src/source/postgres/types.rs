@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::str;
 
 /// PostgreSQL type OIDs
-/// See: https://github.com/postgres/postgres/blob/master/src/include/catalog/pg_type.dat
+/// See: <https://github.com/postgres/postgres/blob/master/src/include/catalog/pg_type.dat>
 pub mod oids {
     pub const BOOL: u32 = 16;
     pub const BYTEA: u32 = 17;
