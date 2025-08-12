@@ -87,7 +87,6 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: "1.78"
-      with:
         components: rustfmt, clippy
     
     - name: Cache dependencies
