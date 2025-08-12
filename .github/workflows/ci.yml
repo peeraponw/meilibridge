@@ -8,6 +8,8 @@ on:
   schedule:
     # Run at 2 AM UTC every Monday to catch dependency issues
     - cron: '0 2 * * 1'
+  workflow_call:
+    # Allow this workflow to be called by other workflows
 
 env:
   CARGO_TERM_COLOR: always
