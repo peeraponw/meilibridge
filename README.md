@@ -4,11 +4,11 @@
 
 <div align="center">
 
-[![GitHub Release](https://img.shields.io/github/v/release/binary-touch/meilibridge?style=flat&logo=github)](https://github.com/binary-touch/meilibridge/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/meilibridge/meilibridge)
+[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/binarytouch/meilibridge)
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![codecov](https://codecov.io/github/binary-touch/meilibridge/graph/badge.svg?token=E8W87QQO3G)](https://codecov.io/github/binary-touch/meilibridge)
+[![GitHub Release](https://img.shields.io/github/v/release/binary-touch/meilibridge?style=flat&logo=github)](https://github.com/binary-touch/meilibridge/releases/latest)
 
 **Lightning-fast PostgreSQL to Meilisearch sync engine**
 
