@@ -126,22 +126,22 @@ jobs:
           
           # Features
           echo "### 🚀 Features"
-          git log $RANGE --pretty=format:"* %s (%h) - @%an" --grep="^feat" | head -20 || echo "* No new features"
+          git log $RANGE --pretty=format:"* %s (%h) - %an" --grep="^feat" | head -20 || echo "* No new features"
           echo ""
           
           # Bug fixes
           echo "### 🐛 Bug Fixes"
-          git log $RANGE --pretty=format:"* %s (%h) - @%an" --grep="^fix" | head -20 || echo "* No bug fixes"
+          git log $RANGE --pretty=format:"* %s (%h) - %an" --grep="^fix" | head -20 || echo "* No bug fixes"
           echo ""
           
           # Other changes
           echo "### 📚 Documentation & Other Changes"
-          git log $RANGE --pretty=format:"* %s (%h) - @%an" --grep="^docs\|^chore\|^refactor\|^style\|^test" | head -20 || echo "* No other changes"
+          git log $RANGE --pretty=format:"* %s (%h) - %an" --grep="^docs\|^chore\|^refactor\|^style\|^test" | head -20 || echo "* No other changes"
           echo ""
           
           # Contributors
           echo "### 👥 Contributors"
-          git log $RANGE --pretty=format:"%an" | sort -u | sed 's/^/* @/' | head -20
+          git log $RANGE --pretty=format:"%an" | sort -u | sed 's/^/* /' | head -20
           echo ""
           
           echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-${{ needs.validate-version.outputs.version }}}...${{ needs.validate-version.outputs.version }}"
