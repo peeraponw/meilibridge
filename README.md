@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/meilibridge/meilibridge)
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![codecov](https://codecov.io/github/binary-touch/meilibridge/graph/badge.svg?token=E8W87QQO3G)](https://codecov.io/github/binary-touch/meilibridge)
 
 **Lightning-fast PostgreSQL to Meilisearch sync engine**
 
