@@ -113,7 +113,6 @@ mod task_endpoints_tests {
         assert!(orchestrator.is_ok());
         let _orchestrator = orchestrator.unwrap();
 
-        // Orchestrator created successfully
-        assert!(true);
+        // Orchestrator created successfully - test passes if we reach here
     }
 }

@@ -50,10 +50,10 @@ impl SourceAdapter for PostgresAdapter {
         let client = self.connector.get_client().await?;
 
         // Create replication slot if needed
-        self.slot_manager.create_slot(&**client).await?;
+        self.slot_manager.create_slot(&client).await?;
 
         // Create publication if needed (empty tables means all tables)
-        self.slot_manager.create_publication(&**client, &[]).await?;
+        self.slot_manager.create_publication(&client, &[]).await?;
 
         Ok(())
     }
@@ -65,7 +65,7 @@ impl SourceAdapter for PostgresAdapter {
             Some(lsn.to_string())
         } else {
             // Get confirmed flush LSN from slot
-            self.slot_manager.get_slot_lsn(&**client).await?
+            self.slot_manager.get_slot_lsn(&client).await?
         };
 
         debug!("Starting replication from LSN: {:?}", start_lsn);
@@ -126,7 +126,7 @@ impl SourceAdapter for PostgresAdapter {
         let client = self.connector.get_client().await?;
         let lsn = self
             .slot_manager
-            .get_slot_lsn(&**client)
+            .get_slot_lsn(&client)
             .await?
             .unwrap_or_else(|| "0/0".to_string());
 

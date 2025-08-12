@@ -40,7 +40,7 @@ pub enum TaskCommand {
     Resume(String),                                      // Task ID
     GetStatus(String, mpsc::Sender<Option<TaskStatus>>), // Task ID
     GetAllStatuses(mpsc::Sender<Vec<TaskStatus>>),
-    CreateTask(crate::config::SyncTaskConfig, mpsc::Sender<Result<()>>),
+    CreateTask(Box<crate::config::SyncTaskConfig>, mpsc::Sender<Result<()>>),
     DeleteTask(String, mpsc::Sender<Result<()>>), // Task ID
     Shutdown,
 }
@@ -208,7 +208,7 @@ impl SyncTaskManager {
                             let _ = resp_tx.send(all_statuses).await;
                         }
                         TaskCommand::CreateTask(task_config, resp_tx) => {
-                            let result = Self::create_task(task_config, &statuses, &config).await;
+                            let result = Self::create_task(*task_config, &statuses, &config).await;
                             let _ = resp_tx.send(result).await;
                         }
                         TaskCommand::DeleteTask(task_id, resp_tx) => {
@@ -496,7 +496,7 @@ impl SyncTaskManager {
     pub async fn create_sync_task(&self, task_config: crate::config::SyncTaskConfig) -> Result<()> {
         if let Some(tx) = &self.command_tx {
             let (resp_tx, mut resp_rx) = mpsc::channel(1);
-            tx.send(TaskCommand::CreateTask(task_config, resp_tx))
+            tx.send(TaskCommand::CreateTask(Box::new(task_config), resp_tx))
                 .await
                 .map_err(|_| {
                     MeiliBridgeError::Pipeline("Failed to send create task command".to_string())

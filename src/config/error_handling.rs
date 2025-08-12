@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Error handling configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ErrorHandlingConfig {
     /// Retry configuration
     #[serde(default)]
@@ -14,16 +14,6 @@ pub struct ErrorHandlingConfig {
     /// Circuit breaker configuration
     #[serde(default)]
     pub circuit_breaker: ErrorHandlingCircuitBreakerConfig,
-}
-
-impl Default for ErrorHandlingConfig {
-    fn default() -> Self {
-        Self {
-            retry: RetryConfig::default(),
-            dead_letter_queue: DeadLetterQueueConfig::default(),
-            circuit_breaker: ErrorHandlingCircuitBreakerConfig::default(),
-        }
-    }
 }
 
 /// Retry configuration

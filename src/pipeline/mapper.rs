@@ -111,7 +111,7 @@ impl FieldMapper {
                             }
                         } else if let Some(path_str) = path {
                             // Nested extraction
-                            if let Some(value) = self.extract_nested(&data, source_field, &path_str)
+                            if let Some(value) = self.extract_nested(&data, source_field, path_str)
                             {
                                 result.insert(target_field.clone(), value);
                                 mapped_sources.push(source_field.clone());

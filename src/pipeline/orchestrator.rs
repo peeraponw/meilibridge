@@ -26,6 +26,54 @@ use tokio::sync::{mpsc, watch, RwLock};
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, trace, warn};
 
+/// Parameters for batch processing with exactly-once delivery
+struct ExactlyOnceBatchParams<'a> {
+    destination_tx: &'a mpsc::Sender<(
+        DestinationCommand,
+        mpsc::Sender<Result<DestinationResponse>>,
+    )>,
+    checkpoints: &'a Arc<RwLock<HashMap<String, Position>>>,
+    table_name: &'a str,
+    dead_letter_queue: Option<&'a Arc<DeadLetterQueue>>,
+    task_id: &'a str,
+    exactly_once_manager: &'a Arc<crate::delivery::ExactlyOnceManager>,
+    transactional_checkpoint: &'a Arc<crate::delivery::TransactionalCheckpoint>,
+}
+
+/// Parameters for batch processing
+struct BatchProcessParams<'a> {
+    destination_tx: &'a mpsc::Sender<(
+        DestinationCommand,
+        mpsc::Sender<Result<DestinationResponse>>,
+    )>,
+    checkpoints: &'a Arc<RwLock<HashMap<String, Position>>>,
+    table_name: &'a str,
+    dead_letter_queue: Option<&'a Arc<DeadLetterQueue>>,
+    task_id: &'a str,
+    exactly_once_manager: Option<&'a Arc<crate::delivery::ExactlyOnceManager>>,
+    transactional_checkpoint: Option<&'a Arc<crate::delivery::TransactionalCheckpoint>>,
+}
+
+/// Parameters for event stream processing
+struct EventStreamParams {
+    filter: Option<EventFilter>,
+    transformer: Option<EventTransformer>,
+    mapper: Option<FieldMapper>,
+    soft_delete_handler: Option<SoftDeleteHandler>,
+    destination_tx: mpsc::Sender<(
+        DestinationCommand,
+        mpsc::Sender<Result<DestinationResponse>>,
+    )>,
+    checkpoints: Arc<RwLock<HashMap<String, Position>>>,
+    table_name: String,
+    batch_size: usize,
+    batch_timeout: Duration,
+    dead_letter_queue: Option<Arc<DeadLetterQueue>>,
+    task_id: String,
+    exactly_once_manager: Option<Arc<crate::delivery::ExactlyOnceManager>>,
+    transactional_checkpoint: Option<Arc<crate::delivery::TransactionalCheckpoint>>,
+}
+
 /// Convert stream event to models event for dead letter queue
 fn convert_to_models_event(event: Event) -> ModelsEvent {
     let (event_type, source, data) = match event {
@@ -315,7 +363,7 @@ impl PipelineOrchestrator {
     ) -> Result<Box<dyn SourceAdapter>> {
         match source_config {
             crate::config::SourceConfig::PostgreSQL(pg_config) => {
-                Ok(Box::new(PostgresAdapter::new(pg_config.clone())) as Box<dyn SourceAdapter>)
+                Ok(Box::new(PostgresAdapter::new((**pg_config).clone())) as Box<dyn SourceAdapter>)
             }
             crate::config::SourceConfig::MySQL(_) => Err(MeiliBridgeError::Configuration(
                 "MySQL source not yet implemented".to_string(),
@@ -475,7 +523,7 @@ impl PipelineOrchestrator {
         for task in &self.config.sync_tasks {
             tasks_by_source
                 .entry(task.source_name.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(task.clone());
         }
 
@@ -950,7 +998,7 @@ impl PipelineOrchestrator {
             let checkpoints = self.checkpoints.clone();
             let table_name = task.table.clone();
             let batch_size = task.options.batch_size;
-            let batch_timeout = Duration::from_millis(task.options.batch_timeout_ms as u64);
+            let batch_timeout = Duration::from_millis(task.options.batch_timeout_ms);
 
             let dlq = self.dead_letter_queue.clone();
             let task_id = task.id.clone();
@@ -958,9 +1006,7 @@ impl PipelineOrchestrator {
             let transactional_checkpoint = self.transactional_checkpoint.clone();
 
             let handle = tokio::spawn(async move {
-                Self::process_event_stream(
-                    event_stream,
-                    shutdown_rx,
+                let params = EventStreamParams {
                     filter,
                     transformer,
                     mapper,
@@ -970,12 +1016,12 @@ impl PipelineOrchestrator {
                     table_name,
                     batch_size,
                     batch_timeout,
-                    dlq,
+                    dead_letter_queue: dlq,
                     task_id,
-                    exactly_once,
+                    exactly_once_manager: exactly_once,
                     transactional_checkpoint,
-                )
-                .await;
+                };
+                Self::process_event_stream(event_stream, shutdown_rx, params).await;
             });
 
             self.task_handles.push(handle);
@@ -988,25 +1034,10 @@ impl PipelineOrchestrator {
     async fn process_event_stream(
         mut event_stream: impl StreamExt<Item = Result<Event>> + Unpin,
         mut shutdown_rx: watch::Receiver<bool>,
-        filter: Option<EventFilter>,
-        transformer: Option<EventTransformer>,
-        mapper: Option<FieldMapper>,
-        soft_delete_handler: Option<SoftDeleteHandler>,
-        destination_tx: mpsc::Sender<(
-            DestinationCommand,
-            mpsc::Sender<Result<DestinationResponse>>,
-        )>,
-        checkpoints: Arc<RwLock<HashMap<String, Position>>>,
-        table_name: String,
-        batch_size: usize,
-        batch_timeout: Duration,
-        dead_letter_queue: Option<Arc<DeadLetterQueue>>,
-        task_id: String,
-        exactly_once_manager: Option<Arc<crate::delivery::ExactlyOnceManager>>,
-        transactional_checkpoint: Option<Arc<crate::delivery::TransactionalCheckpoint>>,
+        params: EventStreamParams,
     ) {
         let mut event_batch = Vec::new();
-        let mut batch_timer = interval(batch_timeout);
+        let mut batch_timer = interval(params.batch_timeout);
         batch_timer.reset();
 
         loop {
@@ -1015,38 +1046,40 @@ impl PipelineOrchestrator {
                 Some(event_result) = event_stream.next() => {
                     match event_result {
                         Ok(event) => {
-                            debug!("Sync task '{}': Received event from coordinator", table_name);
+                            debug!("Sync task '{}': Received event from coordinator", params.table_name);
                             // Events are pre-filtered by CDC coordinator
                             if let Some(processed) = Self::process_single_event(
                                 event,
-                                &filter,
-                                &transformer,
-                                &mapper,
-                                &soft_delete_handler,
+                                &params.filter,
+                                &params.transformer,
+                                &params.mapper,
+                                &params.soft_delete_handler,
                             ).await {
-                                debug!("Sync task '{}': Event processed, adding to batch", table_name);
+                                debug!("Sync task '{}': Event processed, adding to batch", params.table_name);
                                 event_batch.push(processed);
 
                                 // Process batch if it reaches the size limit
-                                if event_batch.len() >= batch_size {
-                                    info!("Sync task '{}': Batch size {} reached, processing", table_name, batch_size);
+                                if event_batch.len() >= params.batch_size {
+                                    info!("Sync task '{}': Batch size {} reached, processing", params.table_name, params.batch_size);
                                     Self::process_batch(
                                         &mut event_batch,
-                                        &destination_tx,
-                                        &checkpoints,
-                                        &table_name,
-                                        dead_letter_queue.as_ref(),
-                                        &task_id,
-                                        exactly_once_manager.as_ref(),
-                                        transactional_checkpoint.as_ref(),
+                                        BatchProcessParams {
+                                            destination_tx: &params.destination_tx,
+                                            checkpoints: &params.checkpoints,
+                                            table_name: &params.table_name,
+                                            dead_letter_queue: params.dead_letter_queue.as_ref(),
+                                            task_id: &params.task_id,
+                                            exactly_once_manager: params.exactly_once_manager.as_ref(),
+                                            transactional_checkpoint: params.transactional_checkpoint.as_ref(),
+                                        },
                                     ).await;
                                 }
                             } else {
-                                debug!("Sync task '{}': Event filtered out or failed processing", table_name);
+                                debug!("Sync task '{}': Event filtered out or failed processing", params.table_name);
                             }
                         }
                         Err(e) => {
-                            error!("Sync task '{}': Error receiving event: {}", table_name, e);
+                            error!("Sync task '{}': Error receiving event: {}", params.table_name, e);
                         }
                     }
                 }
@@ -1055,38 +1088,42 @@ impl PipelineOrchestrator {
                 _ = batch_timer.tick() => {
                     if !event_batch.is_empty() {
                         info!("Sync task '{}': Batch timeout reached, processing {} events",
-                              table_name, event_batch.len());
+                              params.table_name, event_batch.len());
                         Self::process_batch(
                             &mut event_batch,
-                            &destination_tx,
-                            &checkpoints,
-                            &table_name,
-                            dead_letter_queue.as_ref(),
-                            &task_id,
-                            exactly_once_manager.as_ref(),
-                            transactional_checkpoint.as_ref(),
+                            BatchProcessParams {
+                                destination_tx: &params.destination_tx,
+                                checkpoints: &params.checkpoints,
+                                table_name: &params.table_name,
+                                dead_letter_queue: params.dead_letter_queue.as_ref(),
+                                task_id: &params.task_id,
+                                exactly_once_manager: params.exactly_once_manager.as_ref(),
+                                transactional_checkpoint: params.transactional_checkpoint.as_ref(),
+                            },
                         ).await;
                     } else {
-                        trace!("Sync task '{}': Batch timeout but no events to process", table_name);
+                        trace!("Sync task '{}': Batch timeout but no events to process", params.table_name);
                     }
                 }
 
                 // Check for shutdown
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
-                        info!("Shutting down event stream processor for table '{}'", table_name);
+                        info!("Shutting down event stream processor for table '{}'", params.table_name);
 
                         // Process any remaining events
                         if !event_batch.is_empty() {
                             Self::process_batch(
                                 &mut event_batch,
-                                &destination_tx,
-                                &checkpoints,
-                                &table_name,
-                                dead_letter_queue.as_ref(),
-                                &task_id,
-                                exactly_once_manager.as_ref(),
-                                transactional_checkpoint.as_ref(),
+                                BatchProcessParams {
+                                    destination_tx: &params.destination_tx,
+                                    checkpoints: &params.checkpoints,
+                                    table_name: &params.table_name,
+                                    dead_letter_queue: params.dead_letter_queue.as_ref(),
+                                    task_id: &params.task_id,
+                                    exactly_once_manager: params.exactly_once_manager.as_ref(),
+                                    transactional_checkpoint: params.transactional_checkpoint.as_ref(),
+                                },
                             ).await;
                         }
                         break;
@@ -1153,19 +1190,7 @@ impl PipelineOrchestrator {
     }
 
     /// Process a batch of events
-    async fn process_batch(
-        event_batch: &mut Vec<Event>,
-        destination_tx: &mpsc::Sender<(
-            DestinationCommand,
-            mpsc::Sender<Result<DestinationResponse>>,
-        )>,
-        checkpoints: &Arc<RwLock<HashMap<String, Position>>>,
-        table_name: &str,
-        dead_letter_queue: Option<&Arc<DeadLetterQueue>>,
-        task_id: &str,
-        exactly_once_manager: Option<&Arc<crate::delivery::ExactlyOnceManager>>,
-        transactional_checkpoint: Option<&Arc<crate::delivery::TransactionalCheckpoint>>,
-    ) {
+    async fn process_batch(event_batch: &mut Vec<Event>, params: BatchProcessParams<'_>) {
         if event_batch.is_empty() {
             return;
         }
@@ -1173,23 +1198,25 @@ impl PipelineOrchestrator {
         debug!(
             "Processing batch of {} events for table '{}'",
             event_batch.len(),
-            table_name
+            params.table_name
         );
 
         // Check if exactly-once delivery is enabled
         if let (Some(exactly_once), Some(transactional_cp)) =
-            (exactly_once_manager, transactional_checkpoint)
+            (params.exactly_once_manager, params.transactional_checkpoint)
         {
             // Use exactly-once delivery
             if let Err(e) = Self::process_batch_with_exactly_once(
                 event_batch,
-                destination_tx,
-                checkpoints,
-                table_name,
-                dead_letter_queue,
-                task_id,
-                exactly_once,
-                transactional_cp,
+                ExactlyOnceBatchParams {
+                    destination_tx: params.destination_tx,
+                    checkpoints: params.checkpoints,
+                    table_name: params.table_name,
+                    dead_letter_queue: params.dead_letter_queue,
+                    task_id: params.task_id,
+                    exactly_once_manager: exactly_once,
+                    transactional_checkpoint: transactional_cp,
+                },
             )
             .await
             {
@@ -1202,7 +1229,7 @@ impl PipelineOrchestrator {
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
         let cmd = DestinationCommand::ProcessEvents(event_batch.clone());
 
-        match destination_tx.send((cmd, resp_tx)).await {
+        match params.destination_tx.send((cmd, resp_tx)).await {
             Ok(_) => {
                 // Wait for response
                 match resp_rx.recv().await {
@@ -1210,16 +1237,16 @@ impl PipelineOrchestrator {
                         if response.failed_count == 0 {
                             info!(
                                 "Successfully processed {} events for table '{}'",
-                                response.success_count, table_name
+                                response.success_count, params.table_name
                             );
                         } else {
                             warn!(
                                 "Processed batch with {} successes and {} failures for table '{}'",
-                                response.success_count, response.failed_count, table_name
+                                response.success_count, response.failed_count, params.table_name
                             );
 
                             // Send failed events to dead letter queue
-                            if let Some(dlq) = dead_letter_queue {
+                            if let Some(dlq) = params.dead_letter_queue {
                                 for (i, error) in response.errors.iter().enumerate() {
                                     error!("Batch processing error: {}", error);
 
@@ -1228,7 +1255,7 @@ impl PipelineOrchestrator {
                                         let failed_event = &event_batch[i];
                                         if let Err(e) = dlq
                                             .add_failed_event(
-                                                task_id.to_string(),
+                                                params.task_id.to_string(),
                                                 convert_to_models_event(failed_event.clone()),
                                                 MeiliBridgeError::Pipeline(error.clone()),
                                                 0, // Initial retry count
@@ -1249,12 +1276,15 @@ impl PipelineOrchestrator {
                         if let Some(position) = response.last_position {
                             // Update in-memory checkpoint using task_id
                             // The checkpoint persistence task will handle saving to storage
-                            let mut checkpoints_map = checkpoints.write().await;
-                            checkpoints_map.insert(task_id.to_string(), position);
+                            let mut checkpoints_map = params.checkpoints.write().await;
+                            checkpoints_map.insert(params.task_id.to_string(), position);
                         }
                     }
                     Some(Err(e)) => {
-                        error!("Failed to process batch for table '{}': {}", table_name, e);
+                        error!(
+                            "Failed to process batch for table '{}': {}",
+                            params.table_name, e
+                        );
                     }
                     None => {
                         error!("No response received from destination processor");
@@ -1272,16 +1302,7 @@ impl PipelineOrchestrator {
     /// Process batch with exactly-once delivery guarantees
     async fn process_batch_with_exactly_once(
         event_batch: &mut Vec<Event>,
-        destination_tx: &mpsc::Sender<(
-            DestinationCommand,
-            mpsc::Sender<Result<DestinationResponse>>,
-        )>,
-        checkpoints: &Arc<RwLock<HashMap<String, Position>>>,
-        table_name: &str,
-        dead_letter_queue: Option<&Arc<DeadLetterQueue>>,
-        task_id: &str,
-        exactly_once_manager: &Arc<crate::delivery::ExactlyOnceManager>,
-        transactional_checkpoint: &Arc<crate::delivery::TransactionalCheckpoint>,
+        params: ExactlyOnceBatchParams<'_>,
     ) -> Result<()> {
         use crate::pipeline::exactly_once_helpers::{
             create_dedup_key_from_event, extract_position_from_event,
@@ -1292,13 +1313,17 @@ impl PipelineOrchestrator {
 
         if let Some(position) = last_position {
             // Begin transaction
-            let transaction_id = exactly_once_manager.begin_transaction(task_id).await?;
+            let transaction_id = params
+                .exactly_once_manager
+                .begin_transaction(params.task_id)
+                .await?;
 
             // Start transactional checkpoint
-            transactional_checkpoint
+            params
+                .transactional_checkpoint
                 .begin_transaction(
                     transaction_id.clone(),
-                    task_id.to_string(),
+                    params.task_id.to_string(),
                     position.clone(),
                 )
                 .await?;
@@ -1308,9 +1333,12 @@ impl PipelineOrchestrator {
             for event in event_batch.iter() {
                 let dedup_key = create_dedup_key_from_event(event);
 
-                if !exactly_once_manager.is_duplicate(&dedup_key).await? {
+                if !params.exactly_once_manager.is_duplicate(&dedup_key).await? {
                     deduplicated_batch.push(event.clone());
-                    exactly_once_manager.mark_processed(dedup_key).await?;
+                    params
+                        .exactly_once_manager
+                        .mark_processed(dedup_key)
+                        .await?;
                 } else {
                     debug!("Skipping duplicate event: {:?}", dedup_key);
                 }
@@ -1323,11 +1351,17 @@ impl PipelineOrchestrator {
             }
 
             // Prepare phase - save checkpoint atomically BEFORE Meilisearch write
-            let prepared = transactional_checkpoint.prepare(&transaction_id).await?;
+            let prepared = params
+                .transactional_checkpoint
+                .prepare(&transaction_id)
+                .await?;
 
             if !prepared {
                 error!("Failed to prepare transaction {}", transaction_id);
-                exactly_once_manager.rollback(&transaction_id).await?;
+                params
+                    .exactly_once_manager
+                    .rollback(&transaction_id)
+                    .await?;
                 return Err(MeiliBridgeError::Pipeline(
                     "Transaction prepare failed".to_string(),
                 ));
@@ -1337,24 +1371,27 @@ impl PipelineOrchestrator {
             let (resp_tx, mut resp_rx) = mpsc::channel(1);
             let cmd = DestinationCommand::ProcessEvents(deduplicated_batch.clone());
 
-            match destination_tx.send((cmd, resp_tx)).await {
+            match params.destination_tx.send((cmd, resp_tx)).await {
                 Ok(_) => {
                     // Wait for response
                     match resp_rx.recv().await {
                         Some(Ok(response)) => {
                             if response.failed_count == 0 {
                                 // Success - commit the transaction
-                                transactional_checkpoint.commit(&transaction_id).await?;
-                                exactly_once_manager.commit(&transaction_id).await?;
+                                params
+                                    .transactional_checkpoint
+                                    .commit(&transaction_id)
+                                    .await?;
+                                params.exactly_once_manager.commit(&transaction_id).await?;
 
                                 info!(
                                     "Successfully processed {} events for table '{}' with exactly-once delivery",
-                                    response.success_count, table_name
+                                    response.success_count, params.table_name
                                 );
 
                                 // Update in-memory checkpoint (for monitoring)
-                                let mut checkpoints_map = checkpoints.write().await;
-                                checkpoints_map.insert(task_id.to_string(), position);
+                                let mut checkpoints_map = params.checkpoints.write().await;
+                                checkpoints_map.insert(params.task_id.to_string(), position);
                             } else {
                                 // Partial failure - rollback
                                 warn!(
@@ -1362,17 +1399,23 @@ impl PipelineOrchestrator {
                                     response.failed_count
                                 );
 
-                                transactional_checkpoint.rollback(&transaction_id).await?;
-                                exactly_once_manager.rollback(&transaction_id).await?;
+                                params
+                                    .transactional_checkpoint
+                                    .rollback(&transaction_id)
+                                    .await?;
+                                params
+                                    .exactly_once_manager
+                                    .rollback(&transaction_id)
+                                    .await?;
 
                                 // Send failed events to DLQ
-                                if let Some(dlq) = dead_letter_queue {
+                                if let Some(dlq) = params.dead_letter_queue {
                                     for (i, error) in response.errors.iter().enumerate() {
                                         if i < deduplicated_batch.len() {
                                             let failed_event = &deduplicated_batch[i];
                                             if let Err(e) = dlq
                                                 .add_failed_event(
-                                                    task_id.to_string(),
+                                                    params.task_id.to_string(),
                                                     convert_to_models_event(failed_event.clone()),
                                                     MeiliBridgeError::Pipeline(error.clone()),
                                                     0,
@@ -1396,14 +1439,26 @@ impl PipelineOrchestrator {
                         }
                         Some(Err(e)) => {
                             error!("Failed to process batch: {}, rolling back", e);
-                            transactional_checkpoint.rollback(&transaction_id).await?;
-                            exactly_once_manager.rollback(&transaction_id).await?;
+                            params
+                                .transactional_checkpoint
+                                .rollback(&transaction_id)
+                                .await?;
+                            params
+                                .exactly_once_manager
+                                .rollback(&transaction_id)
+                                .await?;
                             return Err(e);
                         }
                         None => {
                             error!("No response from destination, rolling back");
-                            transactional_checkpoint.rollback(&transaction_id).await?;
-                            exactly_once_manager.rollback(&transaction_id).await?;
+                            params
+                                .transactional_checkpoint
+                                .rollback(&transaction_id)
+                                .await?;
+                            params
+                                .exactly_once_manager
+                                .rollback(&transaction_id)
+                                .await?;
                             return Err(MeiliBridgeError::Pipeline(
                                 "No response from destination".to_string(),
                             ));
@@ -1412,8 +1467,14 @@ impl PipelineOrchestrator {
                 }
                 Err(e) => {
                     error!("Failed to send batch to destination: {}, rolling back", e);
-                    transactional_checkpoint.rollback(&transaction_id).await?;
-                    exactly_once_manager.rollback(&transaction_id).await?;
+                    params
+                        .transactional_checkpoint
+                        .rollback(&transaction_id)
+                        .await?;
+                    params
+                        .exactly_once_manager
+                        .rollback(&transaction_id)
+                        .await?;
                     return Err(MeiliBridgeError::Pipeline(format!("Send failed: {}", e)));
                 }
             }
@@ -1451,7 +1512,7 @@ impl PipelineOrchestrator {
                     };
 
                     // Process through pipeline
-                    if let Some(processed) = Self::process_single_event(
+                    if let Some(Event::FullSync { data, .. }) = Self::process_single_event(
                         event,
                         &filter,
                         &transformer,
@@ -1460,19 +1521,17 @@ impl PipelineOrchestrator {
                     )
                     .await
                     {
-                        if let Event::FullSync { data, .. } = processed {
-                            documents.push(data);
-                            total_count += 1;
+                        documents.push(data);
+                        total_count += 1;
 
-                            // Import batch when it reaches the size limit
-                            if documents.len() >= batch_size {
-                                self.import_documents(
-                                    &task.index,
-                                    &mut documents,
-                                    Some(&task.primary_key),
-                                )
-                                .await?;
-                            }
+                        // Import batch when it reaches the size limit
+                        if documents.len() >= batch_size {
+                            self.import_documents(
+                                &task.index,
+                                &mut documents,
+                                Some(&task.primary_key),
+                            )
+                            .await?;
                         }
                     }
                 }
@@ -1687,32 +1746,24 @@ impl PipelineOrchestrator {
     /// Create a PostgreSQL health check if using PostgreSQL source
     pub fn create_postgres_health_check(&self) -> Option<Box<dyn crate::health::HealthCheck>> {
         // Try single source first (backward compatibility)
-        if let Some(source) = &self.config.source {
-            match source {
-                crate::config::SourceConfig::PostgreSQL(pg_config) => {
-                    // Create a new connector for health checks
-                    let connector = Arc::new(RwLock::new(
-                        crate::source::postgres::PostgresConnector::new(pg_config.clone()),
-                    ));
+        if let Some(crate::config::SourceConfig::PostgreSQL(pg_config)) = &self.config.source {
+            // Create a new connector for health checks
+            let connector = Arc::new(RwLock::new(
+                crate::source::postgres::PostgresConnector::new((**pg_config).clone()),
+            ));
 
-                    return Some(Box::new(crate::health::PostgresHealthCheck::new(connector)));
-                }
-                _ => {}
-            }
+            return Some(Box::new(crate::health::PostgresHealthCheck::new(connector)));
         }
 
         // If multiple sources, use the first PostgreSQL source
         for named_source in &self.config.sources {
-            match &named_source.config {
-                crate::config::SourceConfig::PostgreSQL(pg_config) => {
-                    // Create a new connector for health checks
-                    let connector = Arc::new(RwLock::new(
-                        crate::source::postgres::PostgresConnector::new(pg_config.clone()),
-                    ));
+            if let crate::config::SourceConfig::PostgreSQL(pg_config) = &named_source.config {
+                // Create a new connector for health checks
+                let connector = Arc::new(RwLock::new(
+                    crate::source::postgres::PostgresConnector::new((**pg_config).clone()),
+                ));
 
-                    return Some(Box::new(crate::health::PostgresHealthCheck::new(connector)));
-                }
-                _ => {}
+                return Some(Box::new(crate::health::PostgresHealthCheck::new(connector)));
             }
         }
 

@@ -282,17 +282,15 @@ async fn run_service(config: Config) -> Result<()> {
         .with_health_registry(health_registry.clone());
 
     // If using PostgreSQL, create a statement cache reference
-    if let Some(source) = &config.source {
-        if let meilibridge::config::SourceConfig::PostgreSQL(ref pg_config) = source {
-            let cache_config = meilibridge::source::postgres::CacheConfig {
-                max_size: pg_config.statement_cache.max_size,
-                enabled: pg_config.statement_cache.enabled,
-            };
-            let statement_cache = Arc::new(meilibridge::source::postgres::StatementCache::new(
-                cache_config,
-            ));
-            api_state = api_state.with_postgres_cache(statement_cache);
-        }
+    if let Some(meilibridge::config::SourceConfig::PostgreSQL(ref pg_config)) = &config.source {
+        let cache_config = meilibridge::source::postgres::CacheConfig {
+            max_size: pg_config.statement_cache.max_size,
+            enabled: pg_config.statement_cache.enabled,
+        };
+        let statement_cache = Arc::new(meilibridge::source::postgres::StatementCache::new(
+            cache_config,
+        ));
+        api_state = api_state.with_postgres_cache(statement_cache);
     }
 
     // Also check multiple sources for PostgreSQL (use first one found)
@@ -311,7 +309,7 @@ async fn run_service(config: Config) -> Result<()> {
     }
 
     // Start API server if enabled
-    let api_handle = if config.api.host != "" && config.api.port != 0 {
+    let api_handle = if !config.api.host.is_empty() && config.api.port != 0 {
         info!(
             "Starting API server on {}:{}",
             config.api.host, config.api.port

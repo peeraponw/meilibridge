@@ -182,7 +182,7 @@ mod replication_slot_tests {
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].get::<_, String>("slot_name"), slot_name);
-        assert_eq!(rows[0].get::<_, bool>("active"), false); // Should be inactive after disconnect
+        assert!(!rows[0].get::<_, bool>("active")); // Should be inactive after disconnect
     }
 
     #[tokio::test]

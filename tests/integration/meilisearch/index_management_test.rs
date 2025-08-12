@@ -296,7 +296,7 @@ mod index_management_tests {
         // Get initial stats
         let initial_stats = index.get_stats().await.unwrap();
         assert_eq!(initial_stats.number_of_documents, 0);
-        assert!(initial_stats.is_indexing == false);
+        assert!(!initial_stats.is_indexing);
 
         // Add documents
         let docs: Vec<_> = (0..100)

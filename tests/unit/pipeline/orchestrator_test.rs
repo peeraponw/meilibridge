@@ -118,7 +118,7 @@ async fn test_orchestrator_creation_with_single_source() {
     };
 
     // Add a PostgreSQL source
-    config.source = Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
+    config.source = Some(SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
         connection: PostgreSQLConnection::ConnectionString(
             "postgresql://test:test@localhost:5432/test".to_string(),
         ),
@@ -127,7 +127,7 @@ async fn test_orchestrator_creation_with_single_source() {
         pool: Default::default(),
         ssl: Default::default(),
         statement_cache: Default::default(),
-    }));
+    })));
 
     let orchestrator = PipelineOrchestrator::new(config);
     assert!(orchestrator.is_ok());
@@ -144,7 +144,7 @@ async fn test_orchestrator_with_multiple_sources() {
         source: None,
         sources: vec![NamedSourceConfig {
             name: "source1".to_string(),
-            config: SourceConfig::PostgreSQL(PostgreSQLConfig {
+            config: SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
                 connection: PostgreSQLConnection::ConnectionString(
                     "postgresql://test:test@localhost:5432/test1".to_string(),
                 ),
@@ -153,7 +153,7 @@ async fn test_orchestrator_with_multiple_sources() {
                 pool: Default::default(),
                 ssl: Default::default(),
                 statement_cache: Default::default(),
-            }),
+            })),
         }],
         meilisearch: MeilisearchConfig {
             url: "http://localhost:7700".to_string(),
@@ -214,7 +214,7 @@ async fn test_orchestrator_with_filters() {
             instance_id: "test-1".to_string(),
             tags: HashMap::new(),
         },
-        source: Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
+        source: Some(SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
             connection: PostgreSQLConnection::ConnectionString(
                 "postgresql://test:test@localhost:5432/test".to_string(),
             ),
@@ -223,7 +223,7 @@ async fn test_orchestrator_with_filters() {
             pool: Default::default(),
             ssl: Default::default(),
             statement_cache: Default::default(),
-        })),
+        }))),
         sources: vec![],
         meilisearch: MeilisearchConfig {
             url: "http://localhost:7700".to_string(),
@@ -294,7 +294,7 @@ async fn test_orchestrator_with_soft_delete() {
             instance_id: "test-1".to_string(),
             tags: HashMap::new(),
         },
-        source: Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
+        source: Some(SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
             connection: PostgreSQLConnection::ConnectionString(
                 "postgresql://test:test@localhost:5432/test".to_string(),
             ),
@@ -303,7 +303,7 @@ async fn test_orchestrator_with_soft_delete() {
             pool: Default::default(),
             ssl: Default::default(),
             statement_cache: Default::default(),
-        })),
+        }))),
         sources: vec![],
         meilisearch: MeilisearchConfig {
             url: "http://localhost:7700".to_string(),
@@ -372,7 +372,7 @@ async fn test_dlq_operations() {
             instance_id: "test-1".to_string(),
             tags: HashMap::new(),
         },
-        source: Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
+        source: Some(SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
             connection: PostgreSQLConnection::ConnectionString(
                 "postgresql://test:test@localhost:5432/test".to_string(),
             ),
@@ -381,7 +381,7 @@ async fn test_dlq_operations() {
             pool: Default::default(),
             ssl: Default::default(),
             statement_cache: Default::default(),
-        })),
+        }))),
         sources: vec![],
         meilisearch: MeilisearchConfig {
             url: "http://localhost:7700".to_string(),

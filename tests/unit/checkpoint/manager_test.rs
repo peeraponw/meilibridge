@@ -154,7 +154,7 @@ mod checkpoint_manager_tests {
             let handle = tokio::spawn(async move {
                 let mut checkpoint = Checkpoint::new(
                     "test_task".to_string(),
-                    Position::postgresql(&format!("0/{}", (i + 1) * 1000000)),
+                    Position::postgresql(format!("0/{}", (i + 1) * 1000000)),
                 );
                 checkpoint.stats.events_processed = (i + 1) * 100;
                 storage_clone.save(&checkpoint).await.unwrap();

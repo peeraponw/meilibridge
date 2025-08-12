@@ -30,6 +30,18 @@ impl Default for ParallelConfig {
     }
 }
 
+/// Parameters for worker loop
+struct WorkerParams {
+    worker_id: usize,
+    table_name: String,
+    event_queue: Arc<RwLock<Vec<Event>>>,
+    semaphore: Arc<Semaphore>,
+    filter: Option<EventFilter>,
+    transformer: Option<EventTransformer>,
+    mapper: Option<FieldMapper>,
+    destination_tx: mpsc::Sender<Vec<Event>>,
+}
+
 /// Manages parallel event processing for a table
 pub struct ParallelTableProcessor {
     table_name: String,
@@ -80,7 +92,7 @@ impl ParallelTableProcessor {
             let mut shutdown_rx = shutdown_rx.clone();
 
             let handle = tokio::spawn(async move {
-                Self::worker_loop(
+                let params = WorkerParams {
                     worker_id,
                     table_name,
                     event_queue,
@@ -89,9 +101,8 @@ impl ParallelTableProcessor {
                     transformer,
                     mapper,
                     destination_tx,
-                    &mut shutdown_rx,
-                )
-                .await;
+                };
+                Self::worker_loop(params, &mut shutdown_rx).await;
             });
 
             self.worker_handles.push(handle);
@@ -145,17 +156,13 @@ impl ParallelTableProcessor {
 
     /// Worker loop for processing events
     async fn worker_loop(
-        worker_id: usize,
-        table_name: String,
-        event_queue: Arc<RwLock<Vec<Event>>>,
-        semaphore: Arc<Semaphore>,
-        filter: Option<EventFilter>,
-        transformer: Option<EventTransformer>,
-        mapper: Option<FieldMapper>,
-        destination_tx: mpsc::Sender<Vec<Event>>,
+        params: WorkerParams,
         shutdown_rx: &mut tokio::sync::watch::Receiver<bool>,
     ) {
-        info!("Worker {} for table '{}' started", worker_id, table_name);
+        info!(
+            "Worker {} for table '{}' started",
+            params.worker_id, params.table_name
+        );
         let mut processed_count = 0;
         let mut check_interval = interval(Duration::from_millis(10));
 
@@ -164,14 +171,14 @@ impl ParallelTableProcessor {
                 _ = check_interval.tick() => {
                     // Try to get events from queue
                     let events_to_process = {
-                        let mut queue = event_queue.write().await;
+                        let mut queue = params.event_queue.write().await;
                         let take_count = 10.min(queue.len()); // Process up to 10 at a time
                         queue.drain(..take_count).collect::<Vec<_>>()
                     };
 
                     if !events_to_process.is_empty() {
                         // Acquire permits for processing
-                        let permits = semaphore
+                        let permits = params.semaphore
                             .acquire_many(events_to_process.len() as u32)
                             .await
                             .unwrap();
@@ -181,9 +188,9 @@ impl ParallelTableProcessor {
                         for event in events_to_process {
                             if let Some(processed) = Self::process_single_event(
                                 event,
-                                &filter,
-                                &transformer,
-                                &mapper,
+                                &params.filter,
+                                &params.transformer,
+                                &params.mapper,
                             ).await {
                                 processed_events.push(processed);
                                 processed_count += 1;
@@ -193,13 +200,13 @@ impl ParallelTableProcessor {
                         if !processed_events.is_empty() {
                             // Record metrics
                             metrics::PARALLEL_WORKER_EVENTS
-                                .with_label_values(&[&table_name, &worker_id.to_string()])
+                                .with_label_values(&[&params.table_name, &params.worker_id.to_string()])
                                 .inc_by(processed_events.len() as f64);
 
-                            if destination_tx.send(processed_events).await.is_err() {
+                            if params.destination_tx.send(processed_events).await.is_err() {
                                 warn!(
                                     "Worker {} for table '{}': Failed to send to destination",
-                                    worker_id, table_name
+                                    params.worker_id, params.table_name
                                 );
                             }
                         }
@@ -208,9 +215,9 @@ impl ParallelTableProcessor {
                         drop(permits);
 
                         // Update queue size metric
-                        let queue_size = event_queue.read().await.len();
+                        let queue_size = params.event_queue.read().await.len();
                         metrics::PARALLEL_QUEUE_SIZE
-                            .with_label_values(&[&table_name])
+                            .with_label_values(&[&params.table_name])
                             .set(queue_size as f64);
                     }
                 }
@@ -219,7 +226,7 @@ impl ParallelTableProcessor {
                     if *shutdown_rx.borrow() {
                         info!(
                             "Worker {} for table '{}' shutting down, processed {} events",
-                            worker_id, table_name, processed_count
+                            params.worker_id, params.table_name, processed_count
                         );
                         break;
                     }
@@ -283,9 +290,12 @@ impl ParallelTableProcessor {
     }
 }
 
+/// Type alias for processor registry
+type ProcessorRegistry = Arc<RwLock<Vec<(String, Arc<ParallelTableProcessor>)>>>;
+
 /// Manages work stealing between table processors
 pub struct WorkStealingCoordinator {
-    processors: Arc<RwLock<Vec<(String, Arc<ParallelTableProcessor>)>>>,
+    processors: ProcessorRegistry,
     config: ParallelConfig,
 }
 
@@ -337,7 +347,7 @@ impl WorkStealingCoordinator {
     }
 
     /// Balance work between processors
-    async fn balance_work(processors: &Arc<RwLock<Vec<(String, Arc<ParallelTableProcessor>)>>>) {
+    async fn balance_work(processors: &ProcessorRegistry) {
         let processors = processors.read().await;
         if processors.len() < 2 {
             return; // Need at least 2 processors for work stealing

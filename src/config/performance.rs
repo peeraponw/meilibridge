@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Performance configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct PerformanceConfig {
     /// Connection pool configuration
     #[serde(default)]
@@ -22,18 +22,6 @@ pub struct PerformanceConfig {
     /// Rate limiting
     #[serde(default)]
     pub rate_limits: RateLimitConfig,
-}
-
-impl Default for PerformanceConfig {
-    fn default() -> Self {
-        Self {
-            connection_pool: ConnectionPoolConfig::default(),
-            batch_processing: BatchProcessingConfig::default(),
-            parallel_processing: ParallelProcessingConfig::default(),
-            memory: MemoryConfig::default(),
-            rate_limits: RateLimitConfig::default(),
-        }
-    }
 }
 
 /// Connection pool settings

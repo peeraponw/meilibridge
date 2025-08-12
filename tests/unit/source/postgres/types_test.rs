@@ -35,7 +35,7 @@ mod postgres_types_tests {
         assert_eq!(decode_value(b"false", oids::BOOL).unwrap(), json!(false));
 
         // Test REAL/DOUBLE
-        assert_eq!(decode_value(b"3.14", oids::FLOAT4).unwrap(), json!(3.14));
+        assert_eq!(decode_value(b"3.5", oids::FLOAT4).unwrap(), json!(3.5));
         assert_eq!(decode_value(b"-1.23", oids::FLOAT8).unwrap(), json!(-1.23));
         assert_eq!(decode_value(b"0.0", oids::FLOAT8).unwrap(), json!(0.0));
     }

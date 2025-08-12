@@ -153,7 +153,7 @@ impl FileDeadLetterStorage {
         // Ensure directory exists
         fs::create_dir_all(&base_path)
             .await
-            .map_err(|e| MeiliBridgeError::Io(e))?;
+            .map_err(MeiliBridgeError::Io)?;
 
         Ok(Self { base_path })
     }
@@ -174,17 +174,17 @@ impl DeadLetterStorage for FileDeadLetterStorage {
         let task_dir = self.get_task_dir(&entry.task_id);
         fs::create_dir_all(&task_dir)
             .await
-            .map_err(|e| MeiliBridgeError::Io(e))?;
+            .map_err(MeiliBridgeError::Io)?;
 
         let path = self.get_entry_path(&entry.task_id, &entry.id);
         let json = serde_json::to_string_pretty(entry)?;
 
         let mut file = fs::File::create(&path)
             .await
-            .map_err(|e| MeiliBridgeError::Io(e))?;
+            .map_err(MeiliBridgeError::Io)?;
         file.write_all(json.as_bytes())
             .await
-            .map_err(|e| MeiliBridgeError::Io(e))?;
+            .map_err(MeiliBridgeError::Io)?;
 
         debug!("Stored dead letter entry {} to {:?}", entry.id, path);
         Ok(())
@@ -200,22 +200,18 @@ impl DeadLetterStorage for FileDeadLetterStorage {
         let mut entries = Vec::new();
         let mut dir = fs::read_dir(&task_dir)
             .await
-            .map_err(|e| MeiliBridgeError::Io(e))?;
+            .map_err(MeiliBridgeError::Io)?;
 
-        while let Some(entry) = dir
-            .next_entry()
-            .await
-            .map_err(|e| MeiliBridgeError::Io(e))?
-        {
+        while let Some(entry) = dir.next_entry().await.map_err(MeiliBridgeError::Io)? {
             if entries.len() >= limit {
                 break;
             }
 
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 let content = fs::read_to_string(&path)
                     .await
-                    .map_err(|e| MeiliBridgeError::Io(e))?;
+                    .map_err(MeiliBridgeError::Io)?;
 
                 match serde_json::from_str::<DeadLetterEntry>(&content) {
                     Ok(dead_letter) => entries.push(dead_letter),
@@ -231,17 +227,13 @@ impl DeadLetterStorage for FileDeadLetterStorage {
         // We need to search all task directories
         let mut dir = fs::read_dir(&self.base_path)
             .await
-            .map_err(|e| MeiliBridgeError::Io(e))?;
+            .map_err(MeiliBridgeError::Io)?;
 
-        while let Some(entry) = dir
-            .next_entry()
-            .await
-            .map_err(|e| MeiliBridgeError::Io(e))?
-        {
+        while let Some(entry) = dir.next_entry().await.map_err(MeiliBridgeError::Io)? {
             if entry
                 .file_type()
                 .await
-                .map_err(|e| MeiliBridgeError::Io(e))?
+                .map_err(MeiliBridgeError::Io)?
                 .is_dir()
             {
                 let task_id = entry.file_name();
@@ -250,7 +242,7 @@ impl DeadLetterStorage for FileDeadLetterStorage {
                 if path.exists() {
                     let content = fs::read_to_string(&path)
                         .await
-                        .map_err(|e| MeiliBridgeError::Io(e))?;
+                        .map_err(MeiliBridgeError::Io)?;
                     let dead_letter = serde_json::from_str(&content)?;
                     return Ok(Some(dead_letter));
                 }
@@ -264,9 +256,7 @@ impl DeadLetterStorage for FileDeadLetterStorage {
         // Find and delete the entry
         if let Some(entry) = self.get(id).await? {
             let path = self.get_entry_path(&entry.task_id, id);
-            fs::remove_file(&path)
-                .await
-                .map_err(|e| MeiliBridgeError::Io(e))?;
+            fs::remove_file(&path).await.map_err(MeiliBridgeError::Io)?;
             debug!("Deleted dead letter entry {} from {:?}", id, path);
         }
         Ok(())
@@ -282,14 +272,10 @@ impl DeadLetterStorage for FileDeadLetterStorage {
         let mut count = 0;
         let mut dir = fs::read_dir(&task_dir)
             .await
-            .map_err(|e| MeiliBridgeError::Io(e))?;
+            .map_err(MeiliBridgeError::Io)?;
 
-        while let Some(entry) = dir
-            .next_entry()
-            .await
-            .map_err(|e| MeiliBridgeError::Io(e))?
-        {
-            if entry.path().extension().map_or(false, |ext| ext == "json") {
+        while let Some(entry) = dir.next_entry().await.map_err(MeiliBridgeError::Io)? {
+            if entry.path().extension().is_some_and(|ext| ext == "json") {
                 count += 1;
             }
         }
@@ -301,17 +287,13 @@ impl DeadLetterStorage for FileDeadLetterStorage {
         let mut tasks = Vec::new();
         let mut dir = fs::read_dir(&self.base_path)
             .await
-            .map_err(|e| MeiliBridgeError::Io(e))?;
+            .map_err(MeiliBridgeError::Io)?;
 
-        while let Some(entry) = dir
-            .next_entry()
-            .await
-            .map_err(|e| MeiliBridgeError::Io(e))?
-        {
+        while let Some(entry) = dir.next_entry().await.map_err(MeiliBridgeError::Io)? {
             if entry
                 .file_type()
                 .await
-                .map_err(|e| MeiliBridgeError::Io(e))?
+                .map_err(MeiliBridgeError::Io)?
                 .is_dir()
             {
                 if let Some(name) = entry.file_name().to_str() {

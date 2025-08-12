@@ -125,15 +125,14 @@ pub async fn clear_redis_keys(
 }
 
 // Test cleanup helpers
+#[derive(Default)]
 pub struct TestCleanup {
     actions: Vec<Box<dyn FnOnce() + Send>>,
 }
 
 impl TestCleanup {
     pub fn new() -> Self {
-        TestCleanup {
-            actions: Vec::new(),
-        }
+        Self::default()
     }
 
     pub fn add<F>(&mut self, action: F)

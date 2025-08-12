@@ -11,7 +11,7 @@ mod validation_tests {
         // Test that a minimal valid configuration is accepted
         let config = Config {
             app: Default::default(),
-            source: Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
+            source: Some(SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
                 connection: PostgreSQLConnection::ConnectionString(
                     "postgresql://user:pass@localhost/db".to_string(),
                 ),
@@ -20,7 +20,7 @@ mod validation_tests {
                 pool: Default::default(),
                 ssl: Default::default(),
                 statement_cache: Default::default(),
-            })),
+            }))),
             sources: vec![],
             sync_tasks: vec![SyncTaskConfig {
                 id: "test".to_string(),
@@ -110,7 +110,7 @@ mod validation_tests {
     #[test]
     fn test_source_config_variations() {
         // Test PostgreSQL with connection string
-        let pg_config = SourceConfig::PostgreSQL(PostgreSQLConfig {
+        let pg_config = SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
             connection: PostgreSQLConnection::ConnectionString(
                 "postgresql://user:pass@localhost/db".to_string(),
             ),
@@ -119,15 +119,12 @@ mod validation_tests {
             pool: Default::default(),
             ssl: Default::default(),
             statement_cache: Default::default(),
-        });
+        }));
 
-        match pg_config {
-            SourceConfig::PostgreSQL(_) => assert!(true),
-            _ => panic!("Expected PostgreSQL config"),
-        }
+        assert!(matches!(pg_config, SourceConfig::PostgreSQL(_)));
 
         // Test PostgreSQL with parameters
-        let pg_params = SourceConfig::PostgreSQL(PostgreSQLConfig {
+        let pg_params = SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
             connection: PostgreSQLConnection::Parameters {
                 host: "localhost".to_string(),
                 port: 5432,
@@ -140,7 +137,7 @@ mod validation_tests {
             pool: Default::default(),
             ssl: Default::default(),
             statement_cache: Default::default(),
-        });
+        }));
 
         match pg_params {
             SourceConfig::PostgreSQL(ref cfg) => match &cfg.connection {

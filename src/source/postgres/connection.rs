@@ -210,11 +210,10 @@ impl ReplicationSlotManager {
     }
 
     pub async fn get_slot_lsn(&self, client: &Client) -> Result<Option<String>> {
-        let query = format!(
-            "SELECT confirmed_flush_lsn::text FROM pg_replication_slots WHERE slot_name = $1"
-        );
+        let query =
+            "SELECT confirmed_flush_lsn::text FROM pg_replication_slots WHERE slot_name = $1";
 
-        match client.query_opt(&query, &[&self.slot_name]).await {
+        match client.query_opt(query, &[&self.slot_name]).await {
             Ok(Some(row)) => {
                 let lsn: Option<String> = row.get(0);
                 Ok(lsn)

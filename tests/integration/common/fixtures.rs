@@ -98,12 +98,12 @@ pub fn create_test_redis_config(url: &str) -> RedisConfig {
 pub fn create_test_config(postgres_url: &str, meilisearch_url: &str, redis_url: &str) -> Config {
     Config {
         app: Default::default(),
-        source: Some(SourceConfig::PostgreSQL(create_test_postgres_config(
-            postgres_url,
+        source: Some(SourceConfig::PostgreSQL(Box::new(
+            create_test_postgres_config(postgres_url),
         ))),
         sources: vec![NamedSourceConfig {
             name: "default".to_string(),
-            config: SourceConfig::PostgreSQL(create_test_postgres_config(postgres_url)),
+            config: SourceConfig::PostgreSQL(Box::new(create_test_postgres_config(postgres_url))),
         }],
         sync_tasks: vec![],
         meilisearch: create_test_meilisearch_config(meilisearch_url),

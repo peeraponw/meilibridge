@@ -100,6 +100,12 @@ impl InMemoryDlqStorage {
     }
 }
 
+impl Default for InMemoryDlqStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait::async_trait]
 impl DlqStorage for InMemoryDlqStorage {
     async fn store(&self, entry: DeadLetterEntry) -> Result<()> {

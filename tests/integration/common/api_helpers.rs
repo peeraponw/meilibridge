@@ -168,7 +168,7 @@ pub mod assertions {
             .expect("Failed to parse JSON response");
         let actual = json
             .get(field)
-            .expect(&format!("Field '{}' not found in response", field));
+            .unwrap_or_else(|| panic!("Field '{}' not found in response", field));
         assert_eq!(
             actual, expected,
             "Field '{}' expected to be {:?} but was {:?}",

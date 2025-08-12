@@ -46,8 +46,7 @@ impl DlqStorage for RedisDlqStorage {
         let mut conn = self.get_connection().await?;
 
         // Serialize entry
-        let entry_data =
-            serde_json::to_string(&entry).map_err(|e| MeiliBridgeError::Serialization(e))?;
+        let entry_data = serde_json::to_string(&entry).map_err(MeiliBridgeError::Serialization)?;
 
         let entry_key = self.entry_key(&entry.id);
         let task_key = self.task_index_key(&entry.task_id);
@@ -115,8 +114,7 @@ impl DlqStorage for RedisDlqStorage {
 
         match entry_data {
             Some(data) => {
-                let entry =
-                    serde_json::from_str(&data).map_err(|e| MeiliBridgeError::Serialization(e))?;
+                let entry = serde_json::from_str(&data).map_err(MeiliBridgeError::Serialization)?;
                 Ok(Some(entry))
             }
             None => Ok(None),
@@ -223,7 +221,7 @@ impl DlqStorage for RedisDlqStorage {
             for id in &entry_ids {
                 let entry_key = self.entry_key(id);
                 pipe.del(entry_key);
-                pipe.zrem(&self.all_entries_key(), id);
+                pipe.zrem(self.all_entries_key(), id);
             }
 
             // Clear the task index

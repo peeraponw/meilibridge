@@ -7,6 +7,7 @@ use testcontainers_modules::{postgres::Postgres, redis::Redis};
 // Re-export Container type for easier use in tests
 pub type Container<'a, I> = TestContainer<'a, I>;
 
+#[derive(Default)]
 pub struct TestContainers<'a> {
     pub postgres: Option<TestContainer<'a, Postgres>>,
     pub redis: Option<TestContainer<'a, Redis>>,
@@ -15,11 +16,7 @@ pub struct TestContainers<'a> {
 
 impl<'a> TestContainers<'a> {
     pub fn new() -> Self {
-        TestContainers {
-            postgres: None,
-            redis: None,
-            meilisearch: None,
-        }
+        Self::default()
     }
 
     pub fn postgres_url(&self) -> String {
@@ -153,7 +150,7 @@ pub fn start_postgres_with_cdc(docker: &Cli) -> TestContainer<'_, PostgresCDCIma
 }
 
 pub fn start_redis(docker: &'static Cli) -> Container<'static, Redis> {
-    docker.run(Redis::default())
+    docker.run(Redis)
 }
 
 pub fn start_meilisearch(docker: &Cli) -> TestContainer<'_, MeilisearchImage> {
@@ -197,15 +194,12 @@ pub async fn wait_for_redis(url: &str) -> Result<(), Box<dyn std::error::Error>>
     let mut retries = 0;
 
     loop {
-        match redis::Client::open(url) {
-            Ok(client) => {
-                if let Ok(mut conn) = client.get_connection() {
-                    if redis::cmd("PING").query::<String>(&mut conn).is_ok() {
-                        return Ok(());
-                    }
+        if let Ok(client) = redis::Client::open(url) {
+            if let Ok(mut conn) = client.get_connection() {
+                if redis::cmd("PING").query::<String>(&mut conn).is_ok() {
+                    return Ok(());
                 }
             }
-            Err(_) => {}
         }
 
         retries += 1;
@@ -224,7 +218,7 @@ pub async fn wait_for_meilisearch(url: &str) -> Result<(), Box<dyn std::error::E
     println!("Waiting for Meilisearch at {}...", url);
 
     loop {
-        match client.get(&format!("{}/health", url)).send().await {
+        match client.get(format!("{}/health", url)).send().await {
             Ok(response) => {
                 if response.status().is_success() {
                     println!("Meilisearch is ready!");

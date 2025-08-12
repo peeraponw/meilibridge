@@ -9,9 +9,10 @@ use testcontainers_modules::redis::Redis;
 use tokio_postgres::Client as PostgresClient;
 
 // Static Docker client to keep containers alive across tests
-pub static DOCKER: once_cell::sync::Lazy<Cli> = once_cell::sync::Lazy::new(|| Cli::default());
+pub static DOCKER: once_cell::sync::Lazy<Cli> = once_cell::sync::Lazy::new(Cli::default);
 
 /// Container setup result with all necessary components
+#[derive(Default)]
 pub struct TestEnvironment {
     // Containers
     pub postgres_container: Option<Container<'static, PostgresCDCImage>>,
@@ -34,18 +35,7 @@ pub struct TestEnvironment {
 
 impl TestEnvironment {
     pub fn new() -> Self {
-        Self {
-            postgres_container: None,
-            redis_container: None,
-            meilisearch_container: None,
-            postgres_client: None,
-            redis_client: None,
-            meilisearch_client: None,
-            postgres_url: None,
-            redis_url: None,
-            meilisearch_url: None,
-            config: None,
-        }
+        Self::default()
     }
 
     /// Setup only PostgreSQL
@@ -155,7 +145,6 @@ impl TestEnvironment {
 }
 
 /// Quick setup functions for common scenarios
-
 /// Setup PostgreSQL with CDC for integration tests
 pub async fn setup_postgres_cdc() -> Result<
     (Container<'static, PostgresCDCImage>, PostgresClient, String),

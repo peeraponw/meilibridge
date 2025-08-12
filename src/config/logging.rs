@@ -64,19 +64,14 @@ pub enum LogOutput {
     },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LogRotation {
     Never,
+    #[default]
     Daily,
     Hourly,
     Size(u64),
-}
-
-impl Default for LogRotation {
-    fn default() -> Self {
-        LogRotation::Daily
-    }
 }
 
 fn default_log_level() -> String {

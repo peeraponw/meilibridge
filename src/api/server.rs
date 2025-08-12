@@ -134,7 +134,7 @@ impl ApiServer {
 
         info!("API server is ready to accept connections");
 
-        server.await.map_err(|e| MeiliBridgeError::Io(e))?;
+        server.await.map_err(MeiliBridgeError::Io)?;
 
         info!("API server stopped gracefully");
         Ok(())

@@ -182,10 +182,7 @@ impl DestinationAdapter for MeilisearchAdapter {
                 }
             }
 
-            events_by_index
-                .entry(index_name)
-                .or_insert_with(Vec::new)
-                .push(event);
+            events_by_index.entry(index_name).or_default().push(event);
         }
 
         // Process each index's events

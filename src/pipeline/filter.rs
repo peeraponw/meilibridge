@@ -142,14 +142,14 @@ impl EventFilter {
     /// Check if an event type is allowed
     fn is_event_type_allowed(&self, event_type: &EventType) -> bool {
         if let Some(allowed_types) = &self.config.event_types {
-            allowed_types
-                .iter()
-                .any(|t| match (t.as_str(), event_type) {
-                    ("create", EventType::Create) => true,
-                    ("update", EventType::Update) => true,
-                    ("delete", EventType::Delete) => true,
-                    _ => false,
-                })
+            allowed_types.iter().any(|t| {
+                matches!(
+                    (t.as_str(), event_type),
+                    ("create", EventType::Create)
+                        | ("update", EventType::Update)
+                        | ("delete", EventType::Delete)
+                )
+            })
         } else {
             // If no filter specified, allow all event types
             true
@@ -175,8 +175,8 @@ impl EventFilter {
         data: &HashMap<String, Value>,
     ) -> bool {
         match condition {
-            Condition::Equals { field, value } => data.get(field).map_or(false, |v| v == value),
-            Condition::NotEquals { field, value } => data.get(field).map_or(true, |v| v != value),
+            Condition::Equals { field, value } => data.get(field) == Some(value),
+            Condition::NotEquals { field, value } => data.get(field) != Some(value),
             Condition::Contains { field, value } => {
                 if let Some(Value::String(s)) = data.get(field) {
                     if let Value::String(pattern) = value {
@@ -201,8 +201,8 @@ impl EventFilter {
                     false
                 }
             }
-            Condition::IsNull { field } => data.get(field).map_or(true, |v| v.is_null()),
-            Condition::IsNotNull { field } => data.get(field).map_or(false, |v| !v.is_null()),
+            Condition::IsNull { field } => data.get(field).is_none_or(|v| v.is_null()),
+            Condition::IsNotNull { field } => data.get(field).is_some_and(|v| !v.is_null()),
             crate::config::pipeline::Condition::And { conditions } => {
                 conditions.iter().all(|c| self.evaluate_condition(c, data))
             }

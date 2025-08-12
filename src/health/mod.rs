@@ -87,7 +87,15 @@ impl HealthRegistry {
             start_time: std::time::Instant::now(),
         }
     }
+}
 
+impl Default for HealthRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HealthRegistry {
     /// Register a health check component
     pub async fn register(&self, component: Box<dyn HealthCheck>) {
         let name = component.component_name().to_string();

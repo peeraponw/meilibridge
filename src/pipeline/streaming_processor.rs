@@ -37,7 +37,7 @@ impl StreamingJsonProcessor {
             .map_err(|e| MeiliBridgeError::Validation(format!("Failed to parse JSON: {}", e)))?;
 
         // Estimate memory usage
-        let estimated_size = self.estimate_value_size(&value);
+        let estimated_size = Self::estimate_value_size(&value);
         debug!(
             "Parsed document with estimated size: {} bytes",
             estimated_size
@@ -74,9 +74,9 @@ impl StreamingJsonProcessor {
         let mut depth = 0;
         let mut in_array = false;
         let mut current_item = String::new();
-        let mut chars = json_str.chars().peekable();
+        let chars = json_str.chars().peekable();
 
-        while let Some(ch) = chars.next() {
+        for ch in chars {
             if !in_array {
                 if ch == '[' {
                     in_array = true;
@@ -127,22 +127,17 @@ impl StreamingJsonProcessor {
     }
 
     /// Estimate the memory size of a JSON value
-    fn estimate_value_size(&self, value: &Value) -> usize {
+    fn estimate_value_size(value: &Value) -> usize {
         match value {
             Value::Null => 8,
             Value::Bool(_) => 8,
             Value::Number(_) => 16,
             Value::String(s) => 24 + s.len(),
-            Value::Array(arr) => {
-                24 + arr
-                    .iter()
-                    .map(|v| self.estimate_value_size(v))
-                    .sum::<usize>()
-            }
+            Value::Array(arr) => 24 + arr.iter().map(Self::estimate_value_size).sum::<usize>(),
             Value::Object(obj) => {
                 24 + obj
                     .iter()
-                    .map(|(k, v)| 24 + k.len() + self.estimate_value_size(v))
+                    .map(|(k, v)| 24 + k.len() + Self::estimate_value_size(v))
                     .sum::<usize>()
             }
         }
@@ -186,7 +181,15 @@ impl ZeroCopyEventRouter {
     pub fn new() -> Self {
         Self {}
     }
+}
 
+impl Default for ZeroCopyEventRouter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ZeroCopyEventRouter {
     /// Route an event without unnecessary cloning
     pub fn route_event<'a>(&'a mut self, event_data: &'a [u8]) -> Result<EventView<'a>> {
         // Parse just enough to determine routing

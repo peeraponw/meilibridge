@@ -189,7 +189,7 @@ mod redis_checkpoint_tests {
         // Use static Docker client
         use crate::common::DOCKER;
 
-        let container = DOCKER.run(Redis::default());
+        let container = DOCKER.run(Redis);
         let port = container.get_host_port_ipv4(6379);
         let url = format!("redis://localhost:{}", port);
 
@@ -224,7 +224,7 @@ mod redis_checkpoint_tests {
         let mut conn = client.get_connection().unwrap();
 
         // Save multiple checkpoints
-        let task_ids = vec!["task_a", "task_b", "task_c"];
+        let task_ids = &["task_a", "task_b", "task_c"];
         let mut checkpoints = vec![];
 
         for (i, task_id) in task_ids.iter().enumerate() {

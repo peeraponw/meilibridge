@@ -298,11 +298,7 @@ fn parse_logical_decoding_message(data: &str, _parser: &PgOutputParser) -> Optio
                 current_value.clear();
             }
             _ => {
-                if current_field.is_empty() || in_brackets {
-                    current_value.push(ch);
-                } else {
-                    current_value.push(ch);
-                }
+                current_value.push(ch);
             }
         }
     }

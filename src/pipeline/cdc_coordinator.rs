@@ -122,7 +122,7 @@ impl CdcCoordinator {
             let paused_tables = self.paused_tables.read().await;
             if paused_tables.contains(&table_name)
                 || (table_name.contains('.')
-                    && paused_tables.contains(table_name.split('.').last().unwrap_or("")))
+                    && paused_tables.contains(table_name.split('.').next_back().unwrap_or("")))
             {
                 debug!("Table '{}' is paused, skipping event", table_name);
                 return;
@@ -143,7 +143,7 @@ impl CdcCoordinator {
 
         // Also try without schema prefix
         if table_name.contains('.') {
-            let table_only = table_name.split('.').last().unwrap_or("");
+            let table_only = table_name.split('.').next_back().unwrap_or("");
             if let Some(tx) = self.task_channels.get(table_only) {
                 debug!(
                     "Sending event to task for table '{}' (without schema)",

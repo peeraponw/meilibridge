@@ -21,7 +21,7 @@ impl PostgresRetryHelper {
             client
                 .query(query, params)
                 .await
-                .map_err(|e| PostgresRetryError::Postgres(e))
+                .map_err(PostgresRetryError::Postgres)
         })
         .await
     }
@@ -82,14 +82,14 @@ impl PostgresRetryHelper {
                 let mut transaction = client
                     .transaction()
                     .await
-                    .map_err(|e| PostgresRetryError::Postgres(e))?;
+                    .map_err(PostgresRetryError::Postgres)?;
 
                 match transaction_fn(&mut transaction).await {
                     Ok(result) => {
                         transaction
                             .commit()
                             .await
-                            .map_err(|e| PostgresRetryError::Postgres(e))?;
+                            .map_err(PostgresRetryError::Postgres)?;
                         Ok(result)
                     }
                     Err(e) => {

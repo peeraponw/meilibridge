@@ -15,7 +15,7 @@ pub struct NamedSourceConfig {
 #[serde(tag = "type")]
 pub enum SourceConfig {
     #[serde(rename = "postgresql")]
-    PostgreSQL(PostgreSQLConfig),
+    PostgreSQL(Box<PostgreSQLConfig>),
 
     #[serde(rename = "mysql")]
     MySQL(MySQLConfig),

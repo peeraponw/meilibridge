@@ -153,7 +153,7 @@ mod batch_processor_tests {
         // Test various document types
         let valid_docs = vec![
             json!({"id": 1, "text": "Simple text"}),
-            json!({"id": 2, "number": 42, "float": 3.14}),
+            json!({"id": 2, "number": 42, "float": std::f64::consts::PI}),
             json!({"id": 3, "bool": true, "array": [1, 2, 3]}),
             json!({"id": 4, "nested": {"key": "value"}}),
             json!({"id": 5, "unicode": "你好世界 🌍"}),

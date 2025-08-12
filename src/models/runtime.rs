@@ -28,6 +28,12 @@ impl RuntimeState {
     }
 }
 
+impl Default for RuntimeState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceState {
     pub id: String,
@@ -124,7 +130,15 @@ impl Metrics {
             start_time: Utc::now(),
         }
     }
+}
 
+impl Default for Metrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Metrics {
     pub fn record_event(&self, bytes: u64) {
         self.total_events
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);

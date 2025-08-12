@@ -291,15 +291,15 @@ fn parse_test_decoding_fields(data: &str) -> HashMap<String, serde_json::Value> 
     let mut current_field = String::new();
     let mut current_type = String::new();
     let mut current_value = String::new();
-    let mut state = ParseState::FieldName;
+    let mut state = ParseState::Name;
     let mut in_quotes = false;
     let mut escape_next = false;
 
     #[derive(Debug)]
     enum ParseState {
-        FieldName,
-        FieldType,
-        FieldValue,
+        Name,
+        Type,
+        Value,
     }
 
     for ch in data.chars() {
@@ -310,23 +310,23 @@ fn parse_test_decoding_fields(data: &str) -> HashMap<String, serde_json::Value> 
         }
 
         match state {
-            ParseState::FieldName => {
+            ParseState::Name => {
                 if ch == '[' {
-                    state = ParseState::FieldType;
+                    state = ParseState::Type;
                 } else if ch == ' ' && current_field.is_empty() {
                     // Skip leading spaces
                 } else {
                     current_field.push(ch);
                 }
             }
-            ParseState::FieldType => {
+            ParseState::Type => {
                 if ch == ']' {
-                    state = ParseState::FieldValue;
+                    state = ParseState::Value;
                 } else {
                     current_type.push(ch);
                 }
             }
-            ParseState::FieldValue => {
+            ParseState::Value => {
                 if ch == ':' && current_value.is_empty() {
                     // Skip the colon separator
                 } else if ch == '\'' && !in_quotes {
@@ -344,7 +344,7 @@ fn parse_test_decoding_fields(data: &str) -> HashMap<String, serde_json::Value> 
                     current_field.clear();
                     current_type.clear();
                     current_value.clear();
-                    state = ParseState::FieldName;
+                    state = ParseState::Name;
                 } else {
                     current_value.push(ch);
                 }

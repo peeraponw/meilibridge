@@ -143,7 +143,7 @@ mod memory_monitor_tests {
                     // Each task allocates 5 x 2MB = 10MB total
                     let alloc = monitor_clone
                         .track_event_memory(2 * 1024 * 1024)
-                        .expect(&format!("Task {} allocation {} should succeed", i, j));
+                        .unwrap_or_else(|_| panic!("Task {} allocation {} should succeed", i, j));
                     allocations.push(alloc);
                     tokio::task::yield_now().await;
                 }
@@ -214,14 +214,11 @@ mod memory_monitor_tests {
         let mut found_checkpoint_pressure = false;
 
         // Wait for first event
-        if let Ok(Some(event)) = timeout(Duration::from_secs(3), rx.recv()).await {
-            match event {
-                MemoryPressureEvent::HighQueueMemory(pct) => {
-                    assert!(pct > 90.0);
-                    found_queue_pressure = true;
-                }
-                _ => {}
-            }
+        if let Ok(Some(MemoryPressureEvent::HighQueueMemory(pct))) =
+            timeout(Duration::from_secs(3), rx.recv()).await
+        {
+            assert!(pct > 90.0);
+            found_queue_pressure = true;
         }
 
         // Scenario 2: Checkpoint pressure

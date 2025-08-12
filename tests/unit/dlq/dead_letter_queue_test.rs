@@ -104,7 +104,7 @@ mod dlq_tests {
         let dlq = DeadLetterQueue::new(storage.clone());
 
         // Add various failed events
-        let errors = vec![
+        let errors = &[
             "Connection timeout",
             "Connection timeout",
             "Index not found",
@@ -284,7 +284,7 @@ mod dlq_tests {
 
         // Verify only 5 were sent
         let mut received = 0;
-        while let Ok(_) = rx.try_recv() {
+        while rx.try_recv().is_ok() {
             received += 1;
         }
         assert_eq!(received, 5);

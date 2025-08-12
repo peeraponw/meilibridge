@@ -98,27 +98,23 @@ pub fn decode_value(bytes: &[u8], type_oid: u32) -> Result<Value> {
             json!(text)
         }
         oids::UUID => {
-            // Validate UUID format
-            if text.len() == 36 && text.chars().filter(|&c| c == '-').count() == 4 {
-                json!(text)
-            } else {
-                json!(text)
-            }
+            // UUID is always returned as string regardless of format
+            json!(text)
         }
         oids::INET | oids::MACADDR => {
             // Network addresses
             json!(text)
         }
         oids::BYTEA => {
-            // Bytea is returned as \xHEXSTRING
-            if text.starts_with("\\x") {
-                json!(text)
-            } else {
-                json!(text)
-            }
+            // Bytea is always returned as string (typically \xHEXSTRING format)
+            json!(text)
         }
-        oids::TEXT | oids::CHAR | _ => {
-            // Default to string for text types and unknown types
+        oids::TEXT | oids::CHAR => {
+            // Text types
+            json!(text)
+        }
+        _ => {
+            // Unknown types default to string
             json!(text)
         }
     };

@@ -26,7 +26,7 @@ pub fn generate_users(count: usize) -> Vec<HashMap<String, Value>> {
 
 /// Generate test product data
 pub fn generate_products(count: usize) -> Vec<HashMap<String, Value>> {
-    let categories = vec!["Electronics", "Books", "Clothing", "Food", "Toys"];
+    let categories = &["Electronics", "Books", "Clothing", "Food", "Toys"];
 
     (0..count)
         .map(|i| {

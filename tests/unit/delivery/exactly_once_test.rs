@@ -278,9 +278,8 @@ mod exactly_once_tests {
         }
 
         // Now process some duplicates from the already processed keys
-        for i in 0..num_duplicates {
-            let dup_key = processed_keys[i].clone();
-            if manager.is_duplicate(&dup_key).await.unwrap() {
+        for dup_key in processed_keys.iter().take(num_duplicates) {
+            if manager.is_duplicate(dup_key).await.unwrap() {
                 duplicate_count += 1;
             }
         }
