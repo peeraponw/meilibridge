@@ -208,8 +208,6 @@ jobs:
       run: |
         cargo publish --allow-dirty --token $CARGO_REGISTRY_TOKEN
 
-
-
   # Build and push Docker images
   docker-release:
     name: Docker Release
