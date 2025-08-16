@@ -22,15 +22,15 @@ groups:
           summary: "Critical CDC lag detected for table {{ $labels.table }}"
           description: "CDC lag is {{ $value }}s for table {{ $labels.table }} (threshold: 300s)"
       
-      # Exactly-Once Violations
-      - alert: ExactlyOnceViolations
+      # At-Least-Once Deduplication Failures
+      - alert: AtLeastOnceDeduplicationFailures
         expr: rate(meilibridge_exactly_once_violations_total[5m]) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Exactly-once delivery violations detected"
-          description: "{{ $value }} violations/sec for table {{ $labels.table }}, type: {{ $labels.violation_type }}"
+          summary: "At-least-once deduplication failures detected"
+          description: "{{ $value }} deduplication failures/sec for table {{ $labels.table }}, type: {{ $labels.violation_type }}"
       
       # Checkpoint Lag
       - alert: HighCheckpointLag

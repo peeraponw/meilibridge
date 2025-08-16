@@ -175,9 +175,9 @@ monitoring:
   health_checks_enabled: true
   health_check_interval_seconds: 30
 
-# Exactly-once delivery configuration
+# At-least-once delivery configuration with deduplication
 exactly_once_delivery:
-  enabled: true                       # Enable exactly-once delivery guarantees
+  enabled: true                       # Enable at-least-once delivery with deduplication
   deduplication_window: 10000         # Number of events to track for deduplication
   transaction_timeout_secs: 30        # Timeout for two-phase commit transactions
   two_phase_commit: true              # Use two-phase commit protocol

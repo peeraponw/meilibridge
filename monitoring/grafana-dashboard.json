@@ -154,7 +154,7 @@
           "refId": "A"
         }
       ],
-      "title": "Exactly-Once Violations Rate",
+      "title": "At-Least-Once Deduplication Failures Rate",
       "type": "timeseries"
     },
     {

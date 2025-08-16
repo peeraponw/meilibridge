@@ -26,8 +26,8 @@ use tokio::sync::{mpsc, watch, RwLock};
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, trace, warn};
 
-/// Parameters for batch processing with exactly-once delivery
-struct ExactlyOnceBatchParams<'a> {
+/// Parameters for batch processing with at-least-once delivery
+struct AtLeastOnceBatchParams<'a> {
     destination_tx: &'a mpsc::Sender<(
         DestinationCommand,
         mpsc::Sender<Result<DestinationResponse>>,
@@ -36,7 +36,7 @@ struct ExactlyOnceBatchParams<'a> {
     table_name: &'a str,
     dead_letter_queue: Option<&'a Arc<DeadLetterQueue>>,
     task_id: &'a str,
-    exactly_once_manager: &'a Arc<crate::delivery::ExactlyOnceManager>,
+    at_least_once_manager: &'a Arc<crate::delivery::AtLeastOnceManager>,
     transactional_checkpoint: &'a Arc<crate::delivery::TransactionalCheckpoint>,
 }
 
@@ -50,7 +50,7 @@ struct BatchProcessParams<'a> {
     table_name: &'a str,
     dead_letter_queue: Option<&'a Arc<DeadLetterQueue>>,
     task_id: &'a str,
-    exactly_once_manager: Option<&'a Arc<crate::delivery::ExactlyOnceManager>>,
+    at_least_once_manager: Option<&'a Arc<crate::delivery::AtLeastOnceManager>>,
     transactional_checkpoint: Option<&'a Arc<crate::delivery::TransactionalCheckpoint>>,
 }
 
@@ -70,7 +70,7 @@ struct EventStreamParams {
     batch_timeout: Duration,
     dead_letter_queue: Option<Arc<DeadLetterQueue>>,
     task_id: String,
-    exactly_once_manager: Option<Arc<crate::delivery::ExactlyOnceManager>>,
+    at_least_once_manager: Option<Arc<crate::delivery::AtLeastOnceManager>>,
     transactional_checkpoint: Option<Arc<crate::delivery::TransactionalCheckpoint>>,
 }
 
@@ -268,8 +268,8 @@ pub struct PipelineOrchestrator {
     pub(crate) cdc_coordinator: Option<Arc<RwLock<CdcCoordinator>>>,
     pub(crate) parallel_processors: HashMap<String, Arc<ParallelTableProcessor>>,
     work_stealing_coordinator: Option<WorkStealingCoordinator>,
-    // Exactly-once delivery components
-    exactly_once_manager: Option<Arc<crate::delivery::ExactlyOnceManager>>,
+    // At-least-once delivery components
+    at_least_once_manager: Option<Arc<crate::delivery::AtLeastOnceManager>>,
     transactional_checkpoint: Option<Arc<crate::delivery::TransactionalCheckpoint>>,
     // Adaptive batching
     adaptive_batching_manager: Option<Arc<AdaptiveBatchingManager>>,
@@ -350,7 +350,7 @@ impl PipelineOrchestrator {
             cdc_coordinator: None,
             parallel_processors: HashMap::new(),
             work_stealing_coordinator: None,
-            exactly_once_manager: None,
+            at_least_once_manager: None,
             transactional_checkpoint: None,
             adaptive_batching_manager: None,
             memory_monitor: None,
@@ -416,12 +416,12 @@ impl PipelineOrchestrator {
         checkpoint_manager.start().await?;
         self.checkpoint_manager = Some(Arc::new(checkpoint_manager));
 
-        // Initialize exactly-once delivery if enabled
+        // Initialize at-least-once delivery if enabled
         if self.config.exactly_once_delivery.enabled {
-            info!("Initializing exactly-once delivery guarantees");
+            info!("Initializing at-least-once delivery guarantees");
 
-            // Create exactly-once manager
-            let exactly_once_config = crate::delivery::ExactlyOnceConfig {
+            // Create at-least-once manager
+            let at_least_once_config = crate::delivery::AtLeastOnceConfig {
                 enabled: self.config.exactly_once_delivery.enabled,
                 deduplication_window: self.config.exactly_once_delivery.deduplication_window,
                 transaction_timeout_secs: self
@@ -432,8 +432,8 @@ impl PipelineOrchestrator {
                 checkpoint_before_write: self.config.exactly_once_delivery.checkpoint_before_write,
             };
 
-            let exactly_once_manager = Arc::new(crate::delivery::ExactlyOnceManager::new(
-                exactly_once_config,
+            let at_least_once_manager = Arc::new(crate::delivery::AtLeastOnceManager::new(
+                at_least_once_config,
             ));
 
             // Create transactional checkpoint
@@ -442,7 +442,7 @@ impl PipelineOrchestrator {
             ));
 
             // Set up transaction coordinator
-            let coordinator = exactly_once_manager.transaction_coordinator.clone();
+            let coordinator = at_least_once_manager.transaction_coordinator.clone();
             let checkpoint_clone = transactional_checkpoint.clone();
             let coordinator_handle = tokio::spawn(async move {
                 coordinator.set_checkpoint_handler(checkpoint_clone).await;
@@ -451,7 +451,7 @@ impl PipelineOrchestrator {
             });
             self.task_handles.push(coordinator_handle);
 
-            self.exactly_once_manager = Some(exactly_once_manager);
+            self.at_least_once_manager = Some(at_least_once_manager);
             self.transactional_checkpoint = Some(transactional_checkpoint);
         }
 
@@ -1002,7 +1002,7 @@ impl PipelineOrchestrator {
 
             let dlq = self.dead_letter_queue.clone();
             let task_id = task.id.clone();
-            let exactly_once = self.exactly_once_manager.clone();
+            let at_least_once = self.at_least_once_manager.clone();
             let transactional_checkpoint = self.transactional_checkpoint.clone();
 
             let handle = tokio::spawn(async move {
@@ -1018,7 +1018,7 @@ impl PipelineOrchestrator {
                     batch_timeout,
                     dead_letter_queue: dlq,
                     task_id,
-                    exactly_once_manager: exactly_once,
+                    at_least_once_manager: at_least_once,
                     transactional_checkpoint,
                 };
                 Self::process_event_stream(event_stream, shutdown_rx, params).await;
@@ -1069,7 +1069,7 @@ impl PipelineOrchestrator {
                                             table_name: &params.table_name,
                                             dead_letter_queue: params.dead_letter_queue.as_ref(),
                                             task_id: &params.task_id,
-                                            exactly_once_manager: params.exactly_once_manager.as_ref(),
+                                            at_least_once_manager: params.at_least_once_manager.as_ref(),
                                             transactional_checkpoint: params.transactional_checkpoint.as_ref(),
                                         },
                                     ).await;
@@ -1097,7 +1097,7 @@ impl PipelineOrchestrator {
                                 table_name: &params.table_name,
                                 dead_letter_queue: params.dead_letter_queue.as_ref(),
                                 task_id: &params.task_id,
-                                exactly_once_manager: params.exactly_once_manager.as_ref(),
+                                at_least_once_manager: params.at_least_once_manager.as_ref(),
                                 transactional_checkpoint: params.transactional_checkpoint.as_ref(),
                             },
                         ).await;
@@ -1121,7 +1121,7 @@ impl PipelineOrchestrator {
                                     table_name: &params.table_name,
                                     dead_letter_queue: params.dead_letter_queue.as_ref(),
                                     task_id: &params.task_id,
-                                    exactly_once_manager: params.exactly_once_manager.as_ref(),
+                                    at_least_once_manager: params.at_least_once_manager.as_ref(),
                                     transactional_checkpoint: params.transactional_checkpoint.as_ref(),
                                 },
                             ).await;
@@ -1201,31 +1201,31 @@ impl PipelineOrchestrator {
             params.table_name
         );
 
-        // Check if exactly-once delivery is enabled
-        if let (Some(exactly_once), Some(transactional_cp)) =
-            (params.exactly_once_manager, params.transactional_checkpoint)
+        // Check if at-least-once delivery is enabled
+        if let (Some(at_least_once), Some(transactional_cp)) =
+            (params.at_least_once_manager, params.transactional_checkpoint)
         {
-            // Use exactly-once delivery
-            if let Err(e) = Self::process_batch_with_exactly_once(
+            // Use at-least-once delivery
+            if let Err(e) = Self::process_batch_with_at_least_once(
                 event_batch,
-                ExactlyOnceBatchParams {
+                AtLeastOnceBatchParams {
                     destination_tx: params.destination_tx,
                     checkpoints: params.checkpoints,
                     table_name: params.table_name,
                     dead_letter_queue: params.dead_letter_queue,
                     task_id: params.task_id,
-                    exactly_once_manager: exactly_once,
+                    at_least_once_manager: at_least_once,
                     transactional_checkpoint: transactional_cp,
                 },
             )
             .await
             {
-                error!("Failed to process batch with exactly-once delivery: {}", e);
+                error!("Failed to process batch with at-least-once delivery: {}", e);
             }
             return;
         }
 
-        // Standard processing without exactly-once delivery
+        // Standard processing without at-least-once delivery
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
         let cmd = DestinationCommand::ProcessEvents(event_batch.clone());
 
@@ -1299,10 +1299,10 @@ impl PipelineOrchestrator {
         event_batch.clear();
     }
 
-    /// Process batch with exactly-once delivery guarantees
-    async fn process_batch_with_exactly_once(
+    /// Process batch with at-least-once delivery guarantees
+    async fn process_batch_with_at_least_once(
         event_batch: &mut Vec<Event>,
-        params: ExactlyOnceBatchParams<'_>,
+        params: AtLeastOnceBatchParams<'_>,
     ) -> Result<()> {
         use crate::pipeline::exactly_once_helpers::{
             create_dedup_key_from_event, extract_position_from_event,
@@ -1314,7 +1314,7 @@ impl PipelineOrchestrator {
         if let Some(position) = last_position {
             // Begin transaction
             let transaction_id = params
-                .exactly_once_manager
+                .at_least_once_manager
                 .begin_transaction(params.task_id)
                 .await?;
 
@@ -1333,10 +1333,10 @@ impl PipelineOrchestrator {
             for event in event_batch.iter() {
                 let dedup_key = create_dedup_key_from_event(event);
 
-                if !params.exactly_once_manager.is_duplicate(&dedup_key).await? {
+                if !params.at_least_once_manager.is_duplicate(&dedup_key).await? {
                     deduplicated_batch.push(event.clone());
                     params
-                        .exactly_once_manager
+                        .at_least_once_manager
                         .mark_processed(dedup_key)
                         .await?;
                 } else {
@@ -1359,7 +1359,7 @@ impl PipelineOrchestrator {
             if !prepared {
                 error!("Failed to prepare transaction {}", transaction_id);
                 params
-                    .exactly_once_manager
+                    .at_least_once_manager
                     .rollback(&transaction_id)
                     .await?;
                 return Err(MeiliBridgeError::Pipeline(
@@ -1382,10 +1382,10 @@ impl PipelineOrchestrator {
                                     .transactional_checkpoint
                                     .commit(&transaction_id)
                                     .await?;
-                                params.exactly_once_manager.commit(&transaction_id).await?;
+                                params.at_least_once_manager.commit(&transaction_id).await?;
 
                                 info!(
-                                    "Successfully processed {} events for table '{}' with exactly-once delivery",
+                                    "Successfully processed {} events for table '{}' with at-least-once delivery",
                                     response.success_count, params.table_name
                                 );
 
@@ -1404,7 +1404,7 @@ impl PipelineOrchestrator {
                                     .rollback(&transaction_id)
                                     .await?;
                                 params
-                                    .exactly_once_manager
+                                    .at_least_once_manager
                                     .rollback(&transaction_id)
                                     .await?;
 
@@ -1444,7 +1444,7 @@ impl PipelineOrchestrator {
                                 .rollback(&transaction_id)
                                 .await?;
                             params
-                                .exactly_once_manager
+                                .at_least_once_manager
                                 .rollback(&transaction_id)
                                 .await?;
                             return Err(e);
@@ -1456,7 +1456,7 @@ impl PipelineOrchestrator {
                                 .rollback(&transaction_id)
                                 .await?;
                             params
-                                .exactly_once_manager
+                                .at_least_once_manager
                                 .rollback(&transaction_id)
                                 .await?;
                             return Err(MeiliBridgeError::Pipeline(
@@ -1472,7 +1472,7 @@ impl PipelineOrchestrator {
                         .rollback(&transaction_id)
                         .await?;
                     params
-                        .exactly_once_manager
+                        .at_least_once_manager
                         .rollback(&transaction_id)
                         .await?;
                     return Err(MeiliBridgeError::Pipeline(format!("Send failed: {}", e)));

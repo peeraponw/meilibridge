@@ -32,7 +32,7 @@ Real-time data synchronization with automatic retries, parallel processing, and 
 
 ### Data Integrity & Reliability
 
-- **✅ Exactly-Once Delivery** - Transaction-based checkpointing with event deduplication
+- **✅ At-Least-Once Delivery** - Transaction-based checkpointing with event deduplication to minimize duplicates
 - **🔐 Atomic Operations** - Two-phase commit protocol ensures data consistency
 - **🗄️ Multi-Source Support** - Sync from multiple PostgreSQL databases simultaneously
 - **🗑️ Soft Delete Handling** - Configurable detection and transformation of soft deletes

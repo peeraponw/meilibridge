@@ -1,17 +1,17 @@
-// Advanced unit tests for exactly-once delivery
+// Advanced unit tests for at-least-once delivery with deduplication
 
-use meilibridge::delivery::{DeduplicationKey, ExactlyOnceConfig, ExactlyOnceManager};
+use meilibridge::delivery::{DeduplicationKey, AtLeastOnceConfig, AtLeastOnceManager};
 use meilibridge::models::Position;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
 #[cfg(test)]
-mod exactly_once_tests {
+mod at_least_once_tests {
     use super::*;
 
-    fn create_test_config() -> ExactlyOnceConfig {
-        ExactlyOnceConfig {
+    fn create_test_config() -> AtLeastOnceConfig {
+        AtLeastOnceConfig {
             enabled: true,
             deduplication_window: 100,
             transaction_timeout_secs: 5,
@@ -27,7 +27,7 @@ mod exactly_once_tests {
     #[tokio::test]
     async fn test_deduplication_basic() {
         let config = create_test_config();
-        let manager = ExactlyOnceManager::new(config);
+        let manager = AtLeastOnceManager::new(config);
 
         let key1 = create_dedup_key("0/1000000", 123, "users");
 
@@ -45,7 +45,7 @@ mod exactly_once_tests {
     async fn test_deduplication_window_eviction() {
         let mut config = create_test_config();
         config.deduplication_window = 10; // Small window for testing
-        let manager = ExactlyOnceManager::new(config);
+        let manager = AtLeastOnceManager::new(config);
 
         // Add keys until window is full
         for i in 0..10 {
@@ -74,7 +74,7 @@ mod exactly_once_tests {
     #[tokio::test]
     async fn test_deduplication_with_primary_key() {
         let config = create_test_config();
-        let manager = ExactlyOnceManager::new(config);
+        let manager = AtLeastOnceManager::new(config);
 
         // Same LSN but different primary keys
         let key1 =
@@ -97,7 +97,7 @@ mod exactly_once_tests {
     #[tokio::test]
     async fn test_transaction_lifecycle() {
         let config = create_test_config();
-        let manager = ExactlyOnceManager::new(config);
+        let manager = AtLeastOnceManager::new(config);
 
         let task_id = "test_task_1";
 
@@ -119,7 +119,7 @@ mod exactly_once_tests {
     #[tokio::test]
     async fn test_transaction_rollback() {
         let config = create_test_config();
-        let manager = ExactlyOnceManager::new(config);
+        let manager = AtLeastOnceManager::new(config);
 
         let task_id = "rollback_task";
 
@@ -142,7 +142,7 @@ mod exactly_once_tests {
     #[tokio::test]
     async fn test_concurrent_transactions() {
         let config = create_test_config();
-        let manager = Arc::new(ExactlyOnceManager::new(config));
+        let manager = Arc::new(AtLeastOnceManager::new(config));
 
         let mut handles = vec![];
 
@@ -185,14 +185,14 @@ mod exactly_once_tests {
     }
 
     #[tokio::test]
-    async fn test_disabled_exactly_once() {
+    async fn test_disabled_at_least_once() {
         let mut config = create_test_config();
         config.enabled = false;
         config.two_phase_commit = false;
 
-        let manager = ExactlyOnceManager::new(config);
+        let manager = AtLeastOnceManager::new(config);
 
-        // With disabled exactly-once, nothing should be tracked
+        // With disabled at-least-once, nothing should be tracked
         let key = create_dedup_key("0/5000000", 500, "disabled_test");
 
         // Should never be duplicate
@@ -214,7 +214,7 @@ mod exactly_once_tests {
     #[tokio::test]
     async fn test_deduplication_across_tables() {
         let config = create_test_config();
-        let manager = ExactlyOnceManager::new(config);
+        let manager = AtLeastOnceManager::new(config);
 
         // Same LSN and XID but different tables
         let key1 = create_dedup_key("0/7000000", 700, "orders");
@@ -237,7 +237,7 @@ mod exactly_once_tests {
     async fn test_transaction_timeout_handling() {
         let mut config = create_test_config();
         config.transaction_timeout_secs = 1; // Very short timeout
-        let manager = ExactlyOnceManager::new(config);
+        let manager = AtLeastOnceManager::new(config);
 
         // Begin transaction
         let txn_id = manager.begin_transaction("timeout_test").await.unwrap();
@@ -260,7 +260,7 @@ mod exactly_once_tests {
     async fn test_high_throughput_deduplication() {
         let mut config = create_test_config();
         config.deduplication_window = 2000; // Large window to track all events
-        let manager = Arc::new(ExactlyOnceManager::new(config));
+        let manager = Arc::new(AtLeastOnceManager::new(config));
 
         let num_events = 100;
         let num_duplicates = 20;

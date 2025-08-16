@@ -1,7 +1,7 @@
-//! Exactly-once delivery implementation for MeiliBridge
+//! At-least-once delivery implementation for MeiliBridge
 //!
 //! This module provides transaction-based checkpointing and event deduplication
-//! to guarantee exactly-once delivery semantics.
+//! to guarantee at-least-once delivery with minimal duplicates.
 
 pub mod checkpoint;
 pub mod deduplication;
@@ -16,10 +16,10 @@ use crate::models::Position;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Configuration for exactly-once delivery
+/// Configuration for at-least-once delivery with deduplication
 #[derive(Debug, Clone)]
-pub struct ExactlyOnceConfig {
-    /// Enable exactly-once delivery guarantees
+pub struct AtLeastOnceConfig {
+    /// Enable at-least-once delivery with deduplication
     pub enabled: bool,
 
     /// Deduplication window size (number of events to track)
@@ -35,7 +35,7 @@ pub struct ExactlyOnceConfig {
     pub checkpoint_before_write: bool,
 }
 
-impl Default for ExactlyOnceConfig {
+impl Default for AtLeastOnceConfig {
     fn default() -> Self {
         Self {
             enabled: true,
@@ -47,15 +47,15 @@ impl Default for ExactlyOnceConfig {
     }
 }
 
-/// Manages exactly-once delivery guarantees
-pub struct ExactlyOnceManager {
-    config: ExactlyOnceConfig,
+/// Manages at-least-once delivery with deduplication
+pub struct AtLeastOnceManager {
+    config: AtLeastOnceConfig,
     deduplicator: Arc<RwLock<EventDeduplicator>>,
     pub transaction_coordinator: Arc<TransactionCoordinator>,
 }
 
-impl ExactlyOnceManager {
-    pub fn new(config: ExactlyOnceConfig) -> Self {
+impl AtLeastOnceManager {
+    pub fn new(config: AtLeastOnceConfig) -> Self {
         let deduplicator = Arc::new(RwLock::new(EventDeduplicator::new(
             config.deduplication_window,
         )));
