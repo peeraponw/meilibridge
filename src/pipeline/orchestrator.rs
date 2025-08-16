@@ -1202,9 +1202,10 @@ impl PipelineOrchestrator {
         );
 
         // Check if at-least-once delivery is enabled
-        if let (Some(at_least_once), Some(transactional_cp)) =
-            (params.at_least_once_manager, params.transactional_checkpoint)
-        {
+        if let (Some(at_least_once), Some(transactional_cp)) = (
+            params.at_least_once_manager,
+            params.transactional_checkpoint,
+        ) {
             // Use at-least-once delivery
             if let Err(e) = Self::process_batch_with_at_least_once(
                 event_batch,
@@ -1333,7 +1334,11 @@ impl PipelineOrchestrator {
             for event in event_batch.iter() {
                 let dedup_key = create_dedup_key_from_event(event);
 
-                if !params.at_least_once_manager.is_duplicate(&dedup_key).await? {
+                if !params
+                    .at_least_once_manager
+                    .is_duplicate(&dedup_key)
+                    .await?
+                {
                     deduplicated_batch.push(event.clone());
                     params
                         .at_least_once_manager

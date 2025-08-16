@@ -1,6 +1,6 @@
 // Advanced unit tests for at-least-once delivery with deduplication
 
-use meilibridge::delivery::{DeduplicationKey, AtLeastOnceConfig, AtLeastOnceManager};
+use meilibridge::delivery::{AtLeastOnceConfig, AtLeastOnceManager, DeduplicationKey};
 use meilibridge::models::Position;
 use std::collections::HashSet;
 use std::sync::Arc;
