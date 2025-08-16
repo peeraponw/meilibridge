@@ -112,7 +112,10 @@ impl CircuitBreaker {
                 // Check if we should transition to half-open
                 if let Some(opened_at) = stats.circuit_opened_at {
                     if Instant::now().duration_since(opened_at) >= self.config.timeout_duration {
-                        info!("Circuit breaker '{}' transitioning from Open to HalfOpen", self.name);
+                        info!(
+                            "Circuit breaker '{}' transitioning from Open to HalfOpen",
+                            self.name
+                        );
                         *state = CircuitState::HalfOpen;
                         stats.half_open_requests = 0;
                         true
@@ -148,7 +151,10 @@ impl CircuitBreaker {
             }
             CircuitState::Open => {
                 // Shouldn't happen, but handle gracefully
-                warn!("Success recorded while circuit breaker '{}' is open", self.name);
+                warn!(
+                    "Success recorded while circuit breaker '{}' is open",
+                    self.name
+                );
             }
             CircuitState::HalfOpen => {
                 // Check if we should close the circuit
@@ -271,7 +277,7 @@ impl CircuitBreaker {
 pub enum CircuitBreakerError {
     #[error("Circuit breaker is open")]
     CircuitOpen,
-    
+
     #[error("Operation failed: {0}")]
     OperationFailed(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -306,7 +312,7 @@ impl CircuitBreakerManager {
         config: CircuitBreakerConfig,
     ) -> Arc<CircuitBreaker> {
         let mut breakers = self.breakers.write().await;
-        
+
         if let Some(breaker) = breakers.get(name) {
             breaker.clone()
         } else {
@@ -331,7 +337,7 @@ impl CircuitBreakerManager {
     /// Reset all circuit breakers
     pub async fn reset_all(&self) {
         let breakers = self.breakers.read().await;
-        
+
         for breaker in breakers.values() {
             breaker.set_state(CircuitState::Closed).await;
         }

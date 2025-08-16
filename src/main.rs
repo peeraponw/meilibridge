@@ -1,3 +1,4 @@
+use clap::{Parser, Subcommand};
 use meilibridge::{
     api::{ApiServer, ApiState},
     config::{Config, ConfigLoader, ConfigValidator},
@@ -5,12 +6,11 @@ use meilibridge::{
     pipeline::{PipelineOrchestrator, StartupChecker},
     sync::SyncTaskManager,
 };
-use clap::{Parser, Subcommand};
 use std::sync::Arc;
+use tokio::signal;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tokio::signal;
 
 #[derive(Parser)]
 #[command(
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
 
     // Initialize tracing with the specified log level
     init_tracing(&cli.log_level);
-    
+
     // Initialize Prometheus metrics
     meilibridge::metrics::init_process_metrics();
 
@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
 
     // Load configuration
     let config = load_config(cli.config.as_deref())?;
-    
+
     // Validate configuration
     validate_config(&config)?;
 
@@ -103,10 +103,10 @@ async fn main() -> Result<()> {
 
 fn init_tracing(log_level: &str) {
     use tracing_subscriber::fmt::time::ChronoLocal;
-    
+
     // Custom event formatter
     let timer = ChronoLocal::new("%Y-%m-%d %H:%M:%S%.3f".to_string());
-    
+
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_timer(timer)
         .with_ansi(true)
@@ -140,13 +140,13 @@ where
         mut writer: tracing_subscriber::fmt::format::Writer<'_>,
         event: &tracing::Event<'_>,
     ) -> std::fmt::Result {
-        use tracing_subscriber::fmt::time::{FormatTime, ChronoLocal};
-        
+        use tracing_subscriber::fmt::time::{ChronoLocal, FormatTime};
+
         // Format timestamp
         let timer = ChronoLocal::new("%Y-%m-%d %H:%M:%S%.3f".to_string());
         timer.format_time(&mut writer)?;
         write!(writer, " ")?;
-        
+
         // Format level
         let level = event.metadata().level();
         match *level {
@@ -157,7 +157,7 @@ where
             tracing::Level::TRACE => write!(writer, "\x1b[35mTRACE\x1b[0m")?,
         }
         write!(writer, " ")?;
-        
+
         // Format thread name and ID
         let current_thread = std::thread::current();
         if let Some(name) = current_thread.name() {
@@ -171,18 +171,21 @@ where
         } else {
             write!(writer, "[{:8}", "unnamed")?;
         }
-        
+
         // Add thread ID
         let thread_id = format!("{:?}", current_thread.id());
-        if let Some(id_num) = thread_id.strip_prefix("ThreadId(").and_then(|s| s.strip_suffix(")")) {
+        if let Some(id_num) = thread_id
+            .strip_prefix("ThreadId(")
+            .and_then(|s| s.strip_suffix(")"))
+        {
             write!(writer, "-{}] ", id_num)?;
         } else {
             write!(writer, "-??] ")?;
         }
-        
+
         // Format the actual message
         ctx.field_format().format_fields(writer.by_ref(), event)?;
-        
+
         writeln!(writer)
     }
 }
@@ -204,10 +207,10 @@ fn validate_config(config: &Config) -> Result<()> {
     // Use the ConfigValidator for comprehensive validation
     let validator = ConfigValidator::new(config.clone());
     let report = validator.validate()?;
-    
+
     // Print the validation report
     report.print();
-    
+
     // Check if configuration is valid
     if !report.is_valid() {
         return Err(meilibridge::MeiliBridgeError::Validation(
@@ -218,7 +221,7 @@ fn validate_config(config: &Config) -> Result<()> {
     info!("  Application: {}", config.app.name);
     info!("  Instance ID: {}", config.app.instance_id);
     info!("  Sync tasks: {}", config.sync_tasks.len());
-    
+
     for task in &config.sync_tasks {
         info!("  - Task '{}': {} -> {}", task.id, task.table, task.index);
     }
@@ -235,19 +238,19 @@ async fn run_service(config: Config) -> Result<()> {
 
     // Create the pipeline orchestrator
     let orchestrator = Arc::new(RwLock::new(PipelineOrchestrator::new(config.clone())?));
-    
+
     // Create the sync task manager
     let task_manager = Arc::new(RwLock::new(SyncTaskManager::new(config.clone())));
-    
+
     // Start the orchestrator
     {
         let mut orchestrator_guard = orchestrator.write().await;
         orchestrator_guard.start().await?;
     }
-    
+
     // Create health registry and register health checks
     let health_registry = Arc::new(meilibridge::health::HealthRegistry::new());
-    
+
     // Register PostgreSQL health check if available
     {
         let orchestrator_guard = orchestrator.read().await;
@@ -257,35 +260,39 @@ async fn run_service(config: Config) -> Result<()> {
             health_registry.register(pg_health_check).await;
         }
     }
-    
+
     // Register Meilisearch health check
-    health_registry.register(Box::new(
-        meilibridge::health::MeilisearchHealthCheck::new(config.meilisearch.clone())
-    )).await;
-    
+    health_registry
+        .register(Box::new(meilibridge::health::MeilisearchHealthCheck::new(
+            config.meilisearch.clone(),
+        )))
+        .await;
+
     // Register Redis health check if configured
     if !config.redis.url.is_empty() {
-        health_registry.register(Box::new(
-            meilibridge::health::RedisHealthCheck::new(config.redis.url.clone())
-        )).await;
+        health_registry
+            .register(Box::new(meilibridge::health::RedisHealthCheck::new(
+                config.redis.url.clone(),
+            )))
+            .await;
     }
-    
+
     // Create API state with health registry and statement cache if using PostgreSQL
     let mut api_state = ApiState::new(orchestrator.clone(), task_manager.clone())
         .with_health_registry(health_registry.clone());
-    
+
     // If using PostgreSQL, create a statement cache reference
-    if let Some(source) = &config.source {
-        if let meilibridge::config::SourceConfig::PostgreSQL(ref pg_config) = source {
-            let cache_config = meilibridge::source::postgres::CacheConfig {
-                max_size: pg_config.statement_cache.max_size,
-                enabled: pg_config.statement_cache.enabled,
-            };
-            let statement_cache = Arc::new(meilibridge::source::postgres::StatementCache::new(cache_config));
-            api_state = api_state.with_postgres_cache(statement_cache);
-        }
+    if let Some(meilibridge::config::SourceConfig::PostgreSQL(ref pg_config)) = &config.source {
+        let cache_config = meilibridge::source::postgres::CacheConfig {
+            max_size: pg_config.statement_cache.max_size,
+            enabled: pg_config.statement_cache.enabled,
+        };
+        let statement_cache = Arc::new(meilibridge::source::postgres::StatementCache::new(
+            cache_config,
+        ));
+        api_state = api_state.with_postgres_cache(statement_cache);
     }
-    
+
     // Also check multiple sources for PostgreSQL (use first one found)
     for named_source in &config.sources {
         if let meilibridge::config::SourceConfig::PostgreSQL(ref pg_config) = &named_source.config {
@@ -293,17 +300,22 @@ async fn run_service(config: Config) -> Result<()> {
                 max_size: pg_config.statement_cache.max_size,
                 enabled: pg_config.statement_cache.enabled,
             };
-            let statement_cache = Arc::new(meilibridge::source::postgres::StatementCache::new(cache_config));
+            let statement_cache = Arc::new(meilibridge::source::postgres::StatementCache::new(
+                cache_config,
+            ));
             api_state = api_state.with_postgres_cache(statement_cache);
             break; // Use first PostgreSQL source found
         }
     }
-    
+
     // Start API server if enabled
-    let api_handle = if config.api.host != "" && config.api.port != 0 {
-        info!("Starting API server on {}:{}", config.api.host, config.api.port);
+    let api_handle = if !config.api.host.is_empty() && config.api.port != 0 {
+        info!(
+            "Starting API server on {}:{}",
+            config.api.host, config.api.port
+        );
         let api_server = ApiServer::new(config.clone(), api_state);
-        
+
         // Start API server in a separate task with error handling
         let api_handle = tokio::spawn(async move {
             match api_server.start().await {
@@ -316,20 +328,20 @@ async fn run_service(config: Config) -> Result<()> {
                 }
             }
         });
-        
+
         // Give the API server a moment to start and check if it failed immediately
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        
+
         if api_handle.is_finished() {
             warn!("API server failed to start, but service will continue");
         }
-        
+
         Some(api_handle)
     } else {
         info!("API server is disabled");
         None
     };
-    
+
     info!("Service started successfully");
     info!("Press Ctrl+C to stop");
 
@@ -345,23 +357,23 @@ async fn run_service(config: Config) -> Result<()> {
 
     // Stop the service
     info!("Stopping service...");
-    
+
     // Stop API server
     if let Some(handle) = api_handle {
         handle.abort();
     }
-    
+
     // Stop orchestrator
     {
         let mut orchestrator_guard = orchestrator.write().await;
         orchestrator_guard.stop().await?;
     }
-    
+
     info!("Service stopped");
-    
+
     // Give a brief moment for final logs to be written
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
+
     // Force exit to ensure all threads are terminated
     std::process::exit(0);
 }

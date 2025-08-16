@@ -1,11 +1,11 @@
 // Checkpoint manager tests
 
+use chrono::Utc;
 use meilibridge::checkpoint::CheckpointStorage;
 use meilibridge::models::progress::{Checkpoint, Position};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
-use chrono::Utc;
 
 #[cfg(test)]
 mod checkpoint_manager_tests {
@@ -47,31 +47,28 @@ mod checkpoint_manager_tests {
             let data = self.data.read().await;
             Ok(data.values().cloned().collect())
         }
-        
+
         async fn is_healthy(&self) -> bool {
             true
         }
     }
 
     fn create_test_checkpoint(task_id: &str) -> Checkpoint {
-        Checkpoint::new(
-            task_id.to_string(),
-            Position::postgresql("0/1234567"),
-        )
+        Checkpoint::new(task_id.to_string(), Position::postgresql("0/1234567"))
     }
 
     #[tokio::test]
     async fn test_checkpoint_save_and_load() {
         let storage = Arc::new(MockStorage::new());
         let checkpoint = create_test_checkpoint("test_task");
-        
+
         // Save checkpoint
         storage.save(&checkpoint).await.unwrap();
-        
+
         // Load checkpoint
         let loaded = storage.load("test_task").await.unwrap();
         assert!(loaded.is_some());
-        
+
         let loaded_checkpoint = loaded.unwrap();
         assert_eq!(loaded_checkpoint.task_id, checkpoint.task_id);
         match &loaded_checkpoint.position {
@@ -83,7 +80,7 @@ mod checkpoint_manager_tests {
     #[tokio::test]
     async fn test_checkpoint_update() {
         let storage = Arc::new(MockStorage::new());
-        
+
         // Create initial checkpoint
         let mut checkpoint = create_test_checkpoint("test_task");
         storage.save(&checkpoint).await.unwrap();
@@ -91,7 +88,7 @@ mod checkpoint_manager_tests {
         // Update checkpoint
         checkpoint.position = Position::postgresql("0/2345678");
         checkpoint.stats.events_processed = 200;
-        
+
         storage.save(&checkpoint).await.unwrap();
 
         // Verify update
@@ -106,17 +103,17 @@ mod checkpoint_manager_tests {
     #[tokio::test]
     async fn test_checkpoint_deletion() {
         let storage = Arc::new(MockStorage::new());
-        
+
         // Create and save checkpoint
         let checkpoint = create_test_checkpoint("test_task");
         storage.save(&checkpoint).await.unwrap();
-        
+
         // Verify it exists
         assert!(storage.load("test_task").await.unwrap().is_some());
-        
+
         // Delete checkpoint
         storage.delete("test_task").await.unwrap();
-        
+
         // Verify it's gone
         assert!(storage.load("test_task").await.unwrap().is_none());
     }
@@ -124,21 +121,19 @@ mod checkpoint_manager_tests {
     #[tokio::test]
     async fn test_checkpoint_list() {
         let storage = Arc::new(MockStorage::new());
-        
+
         // Create multiple checkpoints
         for i in 1..=5 {
             let checkpoint = create_test_checkpoint(&format!("task_{}", i));
             storage.save(&checkpoint).await.unwrap();
         }
-        
+
         // List all checkpoints
         let checkpoints = storage.list().await.unwrap();
         assert_eq!(checkpoints.len(), 5);
-        
+
         // Verify all task IDs are present
-        let task_ids: Vec<String> = checkpoints.iter()
-            .map(|c| c.task_id.clone())
-            .collect();
+        let task_ids: Vec<String> = checkpoints.iter().map(|c| c.task_id.clone()).collect();
         for i in 1..=5 {
             assert!(task_ids.contains(&format!("task_{}", i)));
         }
@@ -147,7 +142,7 @@ mod checkpoint_manager_tests {
     #[tokio::test]
     async fn test_concurrent_checkpoint_updates() {
         let storage = Arc::new(MockStorage::new());
-        
+
         // Create initial checkpoint
         let checkpoint = create_test_checkpoint("test_task");
         storage.save(&checkpoint).await.unwrap();
@@ -159,7 +154,7 @@ mod checkpoint_manager_tests {
             let handle = tokio::spawn(async move {
                 let mut checkpoint = Checkpoint::new(
                     "test_task".to_string(),
-                    Position::postgresql(&format!("0/{}", (i + 1) * 1000000)),
+                    Position::postgresql(format!("0/{}", (i + 1) * 1000000)),
                 );
                 checkpoint.stats.events_processed = (i + 1) * 100;
                 storage_clone.save(&checkpoint).await.unwrap();
@@ -180,14 +175,14 @@ mod checkpoint_manager_tests {
     #[tokio::test]
     async fn test_checkpoint_metadata() {
         let storage = Arc::new(MockStorage::new());
-        
+
         // Create checkpoint with metadata
         let mut checkpoint = create_test_checkpoint("test_task");
         checkpoint.metadata = serde_json::json!({
             "table": "users",
             "version": "1.0"
         });
-        
+
         storage.save(&checkpoint).await.unwrap();
 
         // Verify metadata is preserved
@@ -199,28 +194,26 @@ mod checkpoint_manager_tests {
     #[tokio::test]
     async fn test_position_types() {
         let storage = Arc::new(MockStorage::new());
-        
+
         // Test PostgreSQL position
-        let pg_checkpoint = Checkpoint::new(
-            "pg_task".to_string(),
-            Position::postgresql("0/ABCDEF"),
-        );
+        let pg_checkpoint =
+            Checkpoint::new("pg_task".to_string(), Position::postgresql("0/ABCDEF"));
         storage.save(&pg_checkpoint).await.unwrap();
-        
+
         // Test MySQL position
         let mysql_checkpoint = Checkpoint::new(
             "mysql_task".to_string(),
             Position::mysql("binlog.001", 12345),
         );
         storage.save(&mysql_checkpoint).await.unwrap();
-        
+
         // Test MongoDB position
         let mongo_checkpoint = Checkpoint::new(
             "mongo_task".to_string(),
             Position::mongodb("resume_token_abc123"),
         );
         storage.save(&mongo_checkpoint).await.unwrap();
-        
+
         // Verify all positions
         let checkpoints = storage.list().await.unwrap();
         assert_eq!(checkpoints.len(), 3);
@@ -229,21 +222,21 @@ mod checkpoint_manager_tests {
     #[tokio::test]
     async fn test_checkpoint_stats() {
         let storage = Arc::new(MockStorage::new());
-        
+
         let mut checkpoint = create_test_checkpoint("stats_task");
         checkpoint.stats.events_processed = 1000;
         checkpoint.stats.bytes_processed = 1024 * 1024; // 1MB
         checkpoint.stats.events_failed = 5;
         checkpoint.stats.last_event_at = Some(Utc::now());
-        
+
         storage.save(&checkpoint).await.unwrap();
-        
+
         let loaded = storage.load("stats_task").await.unwrap().unwrap();
         assert_eq!(loaded.stats.events_processed, 1000);
         assert_eq!(loaded.stats.bytes_processed, 1024 * 1024);
         assert_eq!(loaded.stats.events_failed, 5);
         assert!(loaded.stats.last_event_at.is_some());
-        
+
         // Test success rate calculation
         let success_rate = loaded.stats.success_rate();
         assert!(success_rate > 0.99 && success_rate < 1.0); // ~99.5%

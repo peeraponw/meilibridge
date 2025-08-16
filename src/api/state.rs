@@ -1,7 +1,7 @@
 use crate::health::HealthRegistry;
 use crate::pipeline::PipelineOrchestrator;
-use crate::sync::SyncTaskManager;
 use crate::source::postgres::StatementCache;
+use crate::sync::SyncTaskManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -26,17 +26,17 @@ impl ApiState {
             postgres_cache: None,
         }
     }
-    
+
     pub fn with_health_registry(mut self, registry: Arc<HealthRegistry>) -> Self {
         self.health_registry = Some(registry);
         self
     }
-    
+
     pub fn with_postgres_cache(mut self, cache: Arc<StatementCache>) -> Self {
         self.postgres_cache = Some(cache);
         self
     }
-    
+
     pub fn health_registry(&self) -> Option<&Arc<HealthRegistry>> {
         self.health_registry.as_ref()
     }

@@ -11,16 +11,16 @@ mod validation_tests {
         // Test that a minimal valid configuration is accepted
         let config = Config {
             app: Default::default(),
-            source: Some(SourceConfig::PostgreSQL(PostgreSQLConfig {
+            source: Some(SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
                 connection: PostgreSQLConnection::ConnectionString(
-                    "postgresql://user:pass@localhost/db".to_string()
+                    "postgresql://user:pass@localhost/db".to_string(),
                 ),
                 slot_name: "test_slot".to_string(),
                 publication: "test_pub".to_string(),
                 pool: Default::default(),
                 ssl: Default::default(),
                 statement_cache: Default::default(),
-            })),
+            }))),
             sources: vec![],
             sync_tasks: vec![SyncTaskConfig {
                 id: "test".to_string(),
@@ -63,7 +63,7 @@ mod validation_tests {
             performance: Default::default(),
             exactly_once_delivery: Default::default(),
         };
-        
+
         // If we can create it, it's valid
         assert_eq!(config.sync_tasks.len(), 1);
         assert_eq!(config.sync_tasks[0].table, "users");
@@ -103,31 +103,28 @@ mod validation_tests {
             performance: Default::default(),
             exactly_once_delivery: Default::default(),
         };
-        
+
         assert_eq!(config.sync_tasks.len(), 0);
     }
 
     #[test]
     fn test_source_config_variations() {
         // Test PostgreSQL with connection string
-        let pg_config = SourceConfig::PostgreSQL(PostgreSQLConfig {
+        let pg_config = SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
             connection: PostgreSQLConnection::ConnectionString(
-                "postgresql://user:pass@localhost/db".to_string()
+                "postgresql://user:pass@localhost/db".to_string(),
             ),
             slot_name: "slot".to_string(),
             publication: "pub".to_string(),
             pool: Default::default(),
             ssl: Default::default(),
             statement_cache: Default::default(),
-        });
-        
-        match pg_config {
-            SourceConfig::PostgreSQL(_) => assert!(true),
-            _ => panic!("Expected PostgreSQL config"),
-        }
+        }));
+
+        assert!(matches!(pg_config, SourceConfig::PostgreSQL(_)));
 
         // Test PostgreSQL with parameters
-        let pg_params = SourceConfig::PostgreSQL(PostgreSQLConfig {
+        let pg_params = SourceConfig::PostgreSQL(Box::new(PostgreSQLConfig {
             connection: PostgreSQLConnection::Parameters {
                 host: "localhost".to_string(),
                 port: 5432,
@@ -140,17 +137,15 @@ mod validation_tests {
             pool: Default::default(),
             ssl: Default::default(),
             statement_cache: Default::default(),
-        });
-        
+        }));
+
         match pg_params {
-            SourceConfig::PostgreSQL(ref cfg) => {
-                match &cfg.connection {
-                    PostgreSQLConnection::Parameters { host, .. } => {
-                        assert_eq!(host, "localhost");
-                    }
-                    _ => panic!("Expected parameters"),
+            SourceConfig::PostgreSQL(ref cfg) => match &cfg.connection {
+                PostgreSQLConnection::Parameters { host, .. } => {
+                    assert_eq!(host, "localhost");
                 }
-            }
+                _ => panic!("Expected parameters"),
+            },
             _ => panic!("Expected PostgreSQL config"),
         }
     }
@@ -168,7 +163,7 @@ mod validation_tests {
             auto_create_index: false,
             circuit_breaker: Default::default(),
         };
-        
+
         assert_eq!(config.url, "http://localhost:7700");
         assert_eq!(config.api_key, Some("masterKey".to_string()));
         assert_eq!(config.timeout, 60);
@@ -201,7 +196,7 @@ mod validation_tests {
                 handle_on_cdc: true,
             }),
         };
-        
+
         assert_eq!(task.table, "products");
         assert_eq!(task.primary_key, "product_id");
         assert_eq!(task.options.batch_size, 2000);

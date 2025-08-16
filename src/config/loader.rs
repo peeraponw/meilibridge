@@ -73,32 +73,30 @@ impl ConfigLoader {
         let mut errors = Vec::new();
 
         // Validate source configuration
-        if let Some(source) = &config.source {
-            match source {
-                super::SourceConfig::PostgreSQL(pg) => {
-                    if pg.pool.max_size < pg.pool.min_idle {
-                        errors.push("PostgreSQL pool max_size must be >= min_idle".to_string());
-                    }
-                    if pg.pool.max_size == 0 {
-                        errors.push("PostgreSQL pool max_size must be > 0".to_string());
-                    }
-                }
-                _ => {}
+        if let Some(super::SourceConfig::PostgreSQL(pg)) = &config.source {
+            if pg.pool.max_size < pg.pool.min_idle {
+                errors.push("PostgreSQL pool max_size must be >= min_idle".to_string());
+            }
+            if pg.pool.max_size == 0 {
+                errors.push("PostgreSQL pool max_size must be > 0".to_string());
             }
         }
-        
+
         // Validate sources configuration
         for named_source in &config.sources {
-            match &named_source.config {
-                super::SourceConfig::PostgreSQL(pg) => {
-                    if pg.pool.max_size < pg.pool.min_idle {
-                        errors.push(format!("PostgreSQL source '{}' pool max_size must be >= min_idle", named_source.name));
-                    }
-                    if pg.pool.max_size == 0 {
-                        errors.push(format!("PostgreSQL source '{}' pool max_size must be > 0", named_source.name));
-                    }
+            if let super::SourceConfig::PostgreSQL(pg) = &named_source.config {
+                if pg.pool.max_size < pg.pool.min_idle {
+                    errors.push(format!(
+                        "PostgreSQL source '{}' pool max_size must be >= min_idle",
+                        named_source.name
+                    ));
                 }
-                _ => {}
+                if pg.pool.max_size == 0 {
+                    errors.push(format!(
+                        "PostgreSQL source '{}' pool max_size must be > 0",
+                        named_source.name
+                    ));
+                }
             }
         }
 

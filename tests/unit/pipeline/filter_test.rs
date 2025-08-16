@@ -1,9 +1,11 @@
 // Pipeline filter tests
 
-use meilibridge::models::event::{Event, EventId, EventType, EventSource, EventData, EventMetadata};
+use chrono::Utc;
+use meilibridge::models::event::{
+    Event, EventData, EventId, EventMetadata, EventSource, EventType,
+};
 use serde_json::json;
 use std::collections::HashMap;
-use chrono::Utc;
 
 #[cfg(test)]
 mod filter_tests {
@@ -15,7 +17,7 @@ mod filter_tests {
         data.insert("name".to_string(), json!("Test"));
 
         let is_delete = event_type == EventType::Delete;
-        
+
         Event {
             id: EventId::new(),
             event_type,
@@ -99,7 +101,10 @@ mod filter_tests {
             timestamp: Utc::now(),
         };
 
-        let status = event.data.new.as_ref()
+        let status = event
+            .data
+            .new
+            .as_ref()
             .and_then(|d| d.get("status"))
             .and_then(|v| v.as_str());
         assert_eq!(status, Some("active"));
@@ -116,19 +121,19 @@ mod filter_tests {
         ];
 
         // Count events by type
-        let create_count = events.iter()
+        let create_count = events
+            .iter()
             .filter(|e| e.event_type == EventType::Create)
             .count();
         assert_eq!(create_count, 2);
 
         // Count events by table
-        let users_count = events.iter()
-            .filter(|e| e.source.table == "users")
-            .count();
+        let users_count = events.iter().filter(|e| e.source.table == "users").count();
         assert_eq!(users_count, 2);
 
         // Combined filter
-        let users_create_count = events.iter()
+        let users_create_count = events
+            .iter()
             .filter(|e| e.source.table == "users" && e.event_type == EventType::Create)
             .count();
         assert_eq!(users_create_count, 1);
@@ -149,11 +154,14 @@ mod filter_tests {
     #[test]
     fn test_event_position_filtering() {
         let positions = vec!["0/1000000", "0/2000000", "0/3000000"];
-        let events: Vec<Event> = positions.into_iter().map(|pos| {
-            let mut event = create_test_event("users", EventType::Create);
-            event.metadata.position = pos.to_string();
-            event
-        }).collect();
+        let events: Vec<Event> = positions
+            .into_iter()
+            .map(|pos| {
+                let mut event = create_test_event("users", EventType::Create);
+                event.metadata.position = pos.to_string();
+                event
+            })
+            .collect();
 
         assert_eq!(events[0].metadata.position, "0/1000000");
         assert_eq!(events[1].metadata.position, "0/2000000");

@@ -1,8 +1,8 @@
-use serde::{Deserialize};
-use serde_json::{Deserializer, Value};
-use std::io::Read;
 use crate::error::{MeiliBridgeError, Result};
 use crate::pipeline::memory_monitor::MemoryMonitor;
+use serde::Deserialize;
+use serde_json::{Deserializer, Value};
+use std::io::Read;
 use tracing::{debug, warn};
 
 /// Process JSON documents in a streaming fashion to minimize memory usage
@@ -20,36 +20,38 @@ impl StreamingJsonProcessor {
             memory_monitor: None,
         }
     }
-    
+
     pub fn with_memory_monitor(mut self, monitor: MemoryMonitor) -> Self {
         self.memory_monitor = Some(monitor);
         self
     }
-    
+
     /// Parse a JSON document from a reader with size limits
     pub fn parse_document<R: Read>(&self, mut reader: R) -> Result<Value> {
         // Use a limited reader to prevent OOM
         let limited_reader = reader.by_ref().take(self.max_document_size as u64);
-        
+
         // Parse JSON in streaming mode
         let mut de = Deserializer::from_reader(limited_reader);
-        let value = Value::deserialize(&mut de).map_err(|e| {
-            MeiliBridgeError::Validation(format!("Failed to parse JSON: {}", e))
-        })?;
-        
+        let value = Value::deserialize(&mut de)
+            .map_err(|e| MeiliBridgeError::Validation(format!("Failed to parse JSON: {}", e)))?;
+
         // Estimate memory usage
-        let estimated_size = self.estimate_value_size(&value);
-        debug!("Parsed document with estimated size: {} bytes", estimated_size);
-        
+        let estimated_size = Self::estimate_value_size(&value);
+        debug!(
+            "Parsed document with estimated size: {} bytes",
+            estimated_size
+        );
+
         // Track memory if monitor is available
         if let Some(monitor) = &self.memory_monitor {
             let _allocation = monitor.track_event_memory(estimated_size as u64)?;
             // The allocation guard will be dropped when the value is processed
         }
-        
+
         Ok(value)
     }
-    
+
     /// Parse multiple documents from a reader
     pub fn parse_document_stream<R: Read>(&self, reader: R) -> StreamingDocumentIterator<'_, R> {
         StreamingDocumentIterator {
@@ -58,7 +60,7 @@ impl StreamingJsonProcessor {
             done: false,
         }
     }
-    
+
     /// Process large arrays by yielding items one at a time
     pub async fn process_array_streaming<F>(
         &self,
@@ -72,9 +74,9 @@ impl StreamingJsonProcessor {
         let mut depth = 0;
         let mut in_array = false;
         let mut current_item = String::new();
-        let mut chars = json_str.chars().peekable();
-        
-        while let Some(ch) = chars.next() {
+        let chars = json_str.chars().peekable();
+
+        for ch in chars {
             if !in_array {
                 if ch == '[' {
                     in_array = true;
@@ -89,7 +91,7 @@ impl StreamingJsonProcessor {
                     '}' => {
                         depth -= 1;
                         current_item.push(ch);
-                        
+
                         if depth == 0 && !current_item.trim().is_empty() {
                             // Parse and process the item
                             match serde_json::from_str::<Value>(&current_item) {
@@ -120,23 +122,22 @@ impl StreamingJsonProcessor {
                 }
             }
         }
-        
+
         Ok(count)
     }
-    
+
     /// Estimate the memory size of a JSON value
-    fn estimate_value_size(&self, value: &Value) -> usize {
+    fn estimate_value_size(value: &Value) -> usize {
         match value {
             Value::Null => 8,
             Value::Bool(_) => 8,
             Value::Number(_) => 16,
             Value::String(s) => 24 + s.len(),
-            Value::Array(arr) => {
-                24 + arr.iter().map(|v| self.estimate_value_size(v)).sum::<usize>()
-            }
+            Value::Array(arr) => 24 + arr.iter().map(Self::estimate_value_size).sum::<usize>(),
             Value::Object(obj) => {
-                24 + obj.iter()
-                    .map(|(k, v)| 24 + k.len() + self.estimate_value_size(v))
+                24 + obj
+                    .iter()
+                    .map(|(k, v)| 24 + k.len() + Self::estimate_value_size(v))
                     .sum::<usize>()
             }
         }
@@ -152,12 +153,12 @@ pub struct StreamingDocumentIterator<'a, R: Read> {
 
 impl<'a, R: Read> Iterator for StreamingDocumentIterator<'a, R> {
     type Item = Result<Value>;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
             return None;
         }
-        
+
         // Try to parse the next document
         match self.processor.parse_document(&mut self.reader) {
             Ok(doc) => Some(Ok(doc)),
@@ -180,32 +181,44 @@ impl ZeroCopyEventRouter {
     pub fn new() -> Self {
         Self {}
     }
-    
+}
+
+impl Default for ZeroCopyEventRouter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ZeroCopyEventRouter {
     /// Route an event without unnecessary cloning
     pub fn route_event<'a>(&'a mut self, event_data: &'a [u8]) -> Result<EventView<'a>> {
         // Parse just enough to determine routing
         let mut offset = 0;
-        
+
         // Skip whitespace
         while offset < event_data.len() && event_data[offset].is_ascii_whitespace() {
             offset += 1;
         }
-        
+
         if offset >= event_data.len() || event_data[offset] != b'{' {
-            return Err(MeiliBridgeError::Validation("Invalid JSON object".to_string()));
+            return Err(MeiliBridgeError::Validation(
+                "Invalid JSON object".to_string(),
+            ));
         }
-        
+
         // Extract table name without parsing entire document
         if let Some(table_start) = find_json_string_value(event_data, b"\"table\"") {
             let table = std::str::from_utf8(&event_data[table_start.0..table_start.1])
                 .map_err(|e| MeiliBridgeError::Validation(format!("Invalid UTF-8: {}", e)))?;
-            
+
             Ok(EventView {
                 table,
                 raw_data: event_data,
             })
         } else {
-            Err(MeiliBridgeError::Validation("Missing table field".to_string()))
+            Err(MeiliBridgeError::Validation(
+                "Missing table field".to_string(),
+            ))
         }
     }
 }
@@ -230,17 +243,17 @@ fn find_json_string_value(data: &[u8], key: &[u8]) -> Option<(usize, usize)> {
     while i < data.len() {
         if data[i..].starts_with(key) {
             i += key.len();
-            
+
             // Skip whitespace and colon
             while i < data.len() && (data[i].is_ascii_whitespace() || data[i] == b':') {
                 i += 1;
             }
-            
+
             // Expect opening quote
             if i < data.len() && data[i] == b'"' {
                 i += 1;
                 let start = i;
-                
+
                 // Find closing quote (handling escapes)
                 while i < data.len() {
                     if data[i] == b'\\' {

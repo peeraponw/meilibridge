@@ -55,7 +55,7 @@ impl ConfigValidator {
             // Validate CDC-only tables
             if !task.full_sync_on_start.unwrap_or(false) {
                 cdc_only_tables.push(&task.table);
-                
+
                 // Ensure auto_create_index is enabled for CDC-only tables
                 if !self.config.meilisearch.auto_create_index {
                     report.add_warning(format!(
@@ -79,7 +79,11 @@ impl ConfigValidator {
         if !cdc_only_tables.is_empty() {
             report.add_info(format!(
                 "CDC-only tables (no initial full sync): {}",
-                cdc_only_tables.iter().map(|&t| t.as_str()).collect::<Vec<_>>().join(", ")
+                cdc_only_tables
+                    .iter()
+                    .map(|&t| t.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
 
@@ -116,7 +120,11 @@ impl ConfigValidator {
     }
 
     /// Validate batch configuration
-    fn validate_batch_config(&self, task: &SyncTaskConfig, report: &mut ValidationReport) -> Result<()> {
+    fn validate_batch_config(
+        &self,
+        task: &SyncTaskConfig,
+        report: &mut ValidationReport,
+    ) -> Result<()> {
         if task.options.batch_size == 0 {
             report.add_error(format!(
                 "Invalid batch_size (0) for table '{}'. Must be greater than 0.",
@@ -147,42 +155,50 @@ impl ConfigValidator {
         if let Some(source) = &self.config.source {
             match source {
                 crate::config::SourceConfig::PostgreSQL(pg_config) => {
-                // Validate slot name
-                if pg_config.slot_name.is_empty() {
-                    report.add_error("PostgreSQL slot_name cannot be empty".to_string());
-                }
+                    // Validate slot name
+                    if pg_config.slot_name.is_empty() {
+                        report.add_error("PostgreSQL slot_name cannot be empty".to_string());
+                    }
 
-                // Validate publication name
-                if pg_config.publication.is_empty() {
-                    report.add_error("PostgreSQL publication name cannot be empty".to_string());
-                }
+                    // Validate publication name
+                    if pg_config.publication.is_empty() {
+                        report.add_error("PostgreSQL publication name cannot be empty".to_string());
+                    }
 
-                // Validate pool configuration
-                if pg_config.pool.min_idle > pg_config.pool.max_size {
-                    report.add_error(format!(
-                        "PostgreSQL pool min_idle ({}) cannot be greater than max_size ({})",
-                        pg_config.pool.min_idle, pg_config.pool.max_size
-                    ));
-                }
+                    // Validate pool configuration
+                    if pg_config.pool.min_idle > pg_config.pool.max_size {
+                        report.add_error(format!(
+                            "PostgreSQL pool min_idle ({}) cannot be greater than max_size ({})",
+                            pg_config.pool.min_idle, pg_config.pool.max_size
+                        ));
+                    }
                 }
                 _ => {
-                    report.add_warning("Non-PostgreSQL sources are not yet fully supported".to_string());
+                    report.add_warning(
+                        "Non-PostgreSQL sources are not yet fully supported".to_string(),
+                    );
                 }
             }
         }
-        
+
         // Validate multiple sources
         for named_source in &self.config.sources {
             match &named_source.config {
                 crate::config::SourceConfig::PostgreSQL(pg_config) => {
                     // Validate slot name
                     if pg_config.slot_name.is_empty() {
-                        report.add_error(format!("PostgreSQL source '{}' slot_name cannot be empty", named_source.name));
+                        report.add_error(format!(
+                            "PostgreSQL source '{}' slot_name cannot be empty",
+                            named_source.name
+                        ));
                     }
 
                     // Validate publication name
                     if pg_config.publication.is_empty() {
-                        report.add_error(format!("PostgreSQL source '{}' publication name cannot be empty", named_source.name));
+                        report.add_error(format!(
+                            "PostgreSQL source '{}' publication name cannot be empty",
+                            named_source.name
+                        ));
                     }
 
                     // Validate pool configuration
@@ -194,14 +210,20 @@ impl ConfigValidator {
                     }
                 }
                 _ => {
-                    report.add_warning(format!("Non-PostgreSQL source '{}' is not yet fully supported", named_source.name));
+                    report.add_warning(format!(
+                        "Non-PostgreSQL source '{}' is not yet fully supported",
+                        named_source.name
+                    ));
                 }
             }
         }
-        
+
         // Ensure at least one source is configured
         if self.config.source.is_none() && self.config.sources.is_empty() {
-            report.add_error("At least one data source must be configured (use 'source' or 'sources')".to_string());
+            report.add_error(
+                "At least one data source must be configured (use 'source' or 'sources')"
+                    .to_string(),
+            );
         }
 
         Ok(())
@@ -213,8 +235,18 @@ impl ConfigValidator {
             report.add_error("Meilisearch URL cannot be empty".to_string());
         }
 
-        if self.config.meilisearch.api_key.as_ref().map(|k| k.is_empty()).unwrap_or(false) {
-            report.add_warning("Meilisearch API key is empty - ensure Meilisearch allows anonymous access".to_string());
+        if self
+            .config
+            .meilisearch
+            .api_key
+            .as_ref()
+            .map(|k| k.is_empty())
+            .unwrap_or(false)
+        {
+            report.add_warning(
+                "Meilisearch API key is empty - ensure Meilisearch allows anonymous access"
+                    .to_string(),
+            );
         }
 
         if self.config.meilisearch.timeout == 0 {
@@ -287,4 +319,3 @@ impl ValidationReport {
         }
     }
 }
-

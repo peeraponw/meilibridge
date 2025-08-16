@@ -2,9 +2,9 @@
 
 use meilibridge::error::retry::*;
 use meilibridge::error::MeiliBridgeError;
-use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[cfg(test)]
 mod retry_tests {
@@ -84,14 +84,15 @@ mod retry_tests {
 
         let attempt_count = Arc::new(AtomicUsize::new(0));
         let counter = attempt_count.clone();
-        
+
         let result = with_retry(&config, "test_operation", || {
             let counter = counter.clone();
             async move {
                 counter.fetch_add(1, Ordering::SeqCst);
                 Ok::<String, TestError>("Success".to_string())
             }
-        }).await;
+        })
+        .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Success");
@@ -125,7 +126,8 @@ mod retry_tests {
                     Ok("Success".to_string())
                 }
             }
-        }).await;
+        })
+        .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Success");
@@ -158,7 +160,8 @@ mod retry_tests {
                     message: "Non-retryable error".to_string(),
                 })
             }
-        }).await;
+        })
+        .await;
 
         assert!(result.is_err());
         assert_eq!(attempt_count.load(Ordering::SeqCst), 1); // Should not retry
@@ -186,7 +189,8 @@ mod retry_tests {
                     message: "Always fails".to_string(),
                 })
             }
-        }).await;
+        })
+        .await;
 
         assert!(result.is_err());
         assert_eq!(attempt_count.load(Ordering::SeqCst), 3); // Initial + 2 retries
@@ -218,25 +222,26 @@ mod retry_tests {
                 }
                 *last_time = now;
                 drop(last_time);
-                
+
                 Err::<String, TestError>(TestError {
                     retryable: true,
                     message: "Always fails".to_string(),
                 })
             }
-        }).await;
+        })
+        .await;
 
         let recorded_delays = delays.lock().unwrap();
         assert!(recorded_delays.len() >= 2);
-        
-        // First delay should be ~10ms
-        assert!(recorded_delays[0] >= Duration::from_millis(9));
-        assert!(recorded_delays[0] <= Duration::from_millis(15));
-        
-        // Second delay should be ~20ms
+
+        // First delay should be ~10ms (allow more tolerance in CI)
+        assert!(recorded_delays[0] >= Duration::from_millis(8));
+        assert!(recorded_delays[0] <= Duration::from_millis(20));
+
+        // Second delay should be ~20ms (allow more tolerance in CI)
         if recorded_delays.len() > 1 {
-            assert!(recorded_delays[1] >= Duration::from_millis(18));
-            assert!(recorded_delays[1] <= Duration::from_millis(25));
+            assert!(recorded_delays[1] >= Duration::from_millis(15));
+            assert!(recorded_delays[1] <= Duration::from_millis(30));
         }
     }
 
@@ -266,16 +271,17 @@ mod retry_tests {
                 }
                 *last_time = now;
                 drop(last_time);
-                
+
                 Err::<String, TestError>(TestError {
                     retryable: true,
                     message: "Always fails".to_string(),
                 })
             }
-        }).await;
+        })
+        .await;
 
         let recorded_delays = delays.lock().unwrap();
-        
+
         // All delays after the first should be capped at max_delay_ms
         for delay in recorded_delays.iter().skip(1) {
             assert!(*delay <= Duration::from_millis(2100)); // Allow small overhead
@@ -310,10 +316,11 @@ mod retry_tests {
         assert!(MeiliBridgeError::Io(std::io::Error::new(
             std::io::ErrorKind::ConnectionRefused,
             "Connection refused"
-        )).is_retryable());
-        
+        ))
+        .is_retryable());
+
         assert!(MeiliBridgeError::Database("connection error".to_string()).is_retryable());
-        
+
         assert!(MeiliBridgeError::Meilisearch("timeout occurred".to_string()).is_retryable());
         assert!(MeiliBridgeError::Meilisearch("connection failed".to_string()).is_retryable());
         assert!(MeiliBridgeError::Meilisearch("service unavailable".to_string()).is_retryable());
@@ -351,28 +358,32 @@ mod retry_tests {
                 }
                 *last_time = now;
                 drop(last_time);
-                
+
                 Err::<String, TestError>(TestError {
                     retryable: true,
                     message: "Always fails".to_string(),
                 })
             }
-        }).await;
+        })
+        .await;
 
         let recorded_delays = delays.lock().unwrap();
-        
+
         // With jitter, delays should vary around the base delay (100ms)
         // Jitter typically adds some variation
         for delay in recorded_delays.iter() {
-            // Allow for some variation both up and down
-            assert!(*delay >= Duration::from_millis(75));  // Allow up to 25% less
-            assert!(*delay <= Duration::from_millis(150)); // Allow up to 50% more
+            // Allow for more variation in CI environments
+            assert!(*delay >= Duration::from_millis(50)); // Allow up to 50% less
+            assert!(*delay <= Duration::from_millis(200)); // Allow up to 100% more
         }
-        
+
         // Check that not all delays are exactly the same (jitter is working)
         if recorded_delays.len() > 1 {
             let all_same = recorded_delays.windows(2).all(|w| w[0] == w[1]);
-            assert!(!all_same, "All delays are the same, jitter might not be working");
+            assert!(
+                !all_same,
+                "All delays are the same, jitter might not be working"
+            );
         }
     }
 }

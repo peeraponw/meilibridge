@@ -1,6 +1,6 @@
 pub mod adapter;
-pub mod client;
 pub mod batch_processor;
+pub mod client;
 pub mod protected_client;
 
 pub use adapter::MeilisearchAdapter;

@@ -2,30 +2,30 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 mod api;
+mod error_handling;
 mod loader;
 mod logging;
 mod meilisearch;
+mod monitoring;
+mod performance;
+pub mod pipeline;
 mod redis;
 mod source;
 mod sync_task;
 mod validation;
-mod performance;
-mod monitoring;
-mod error_handling;
-pub mod pipeline;
 
 pub use api::*;
+pub use error_handling::*;
 pub use loader::*;
 pub use logging::*;
 pub use meilisearch::*;
+pub use monitoring::*;
+pub use performance::*;
+pub use pipeline::*;
 pub use redis::*;
 pub use source::*;
 pub use sync_task::*;
-pub use pipeline::*;
 pub use validation::*;
-pub use performance::*;
-pub use monitoring::*;
-pub use error_handling::*;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -37,7 +37,7 @@ pub struct Config {
     /// Data source configuration (single source for backward compatibility)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<SourceConfig>,
-    
+
     /// Multiple data sources configuration
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<NamedSourceConfig>,
@@ -58,11 +58,11 @@ pub struct Config {
     /// Logging configuration
     #[serde(default)]
     pub logging: LoggingConfig,
-    
+
     /// Monitoring configuration
     #[serde(default)]
     pub monitoring: MonitoringConfig,
-    
+
     /// Error handling configuration
     #[serde(default)]
     pub error_handling: ErrorHandlingConfig,
@@ -74,11 +74,11 @@ pub struct Config {
     /// Feature flags
     #[serde(default)]
     pub features: FeatureFlags,
-    
+
     /// Performance configuration
     #[serde(default)]
     pub performance: PerformanceConfig,
-    
+
     /// Exactly-once delivery configuration
     #[serde(default)]
     pub exactly_once_delivery: ExactlyOnceDeliveryConfig,
@@ -137,19 +137,19 @@ pub struct ExactlyOnceDeliveryConfig {
     /// Enable exactly-once delivery guarantees
     #[serde(default = "default_true")]
     pub enabled: bool,
-    
+
     /// Size of the deduplication window (number of events to track)
     #[serde(default = "default_deduplication_window")]
     pub deduplication_window: usize,
-    
+
     /// Transaction timeout in seconds
     #[serde(default = "default_transaction_timeout")]
     pub transaction_timeout_secs: u64,
-    
+
     /// Enable two-phase commit protocol
     #[serde(default = "default_true")]
     pub two_phase_commit: bool,
-    
+
     /// Save checkpoint before writing to Meilisearch (atomic)
     #[serde(default = "default_true")]
     pub checkpoint_before_write: bool,

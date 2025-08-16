@@ -7,20 +7,17 @@ use serde_json::Value;
 pub enum Event {
     /// CDC change event
     Cdc(CdcEvent),
-    
+
     /// Full sync data event
-    FullSync {
-        table: String,
-        data: Value,
-    },
-    
+    FullSync { table: String, data: Value },
+
     /// Insert event
     Insert {
         table: String,
         new_data: Value,
         position: Option<Position>,
     },
-    
+
     /// Update event
     Update {
         table: String,
@@ -28,17 +25,17 @@ pub enum Event {
         new_data: Value,
         position: Option<Position>,
     },
-    
+
     /// Delete event
     Delete {
         table: String,
         old_data: Value,
         position: Option<Position>,
     },
-    
+
     /// Checkpoint event
     Checkpoint(Position),
-    
+
     /// Heartbeat event
     Heartbeat,
 }

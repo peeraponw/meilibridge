@@ -61,7 +61,7 @@ impl EventTransformer {
     ) -> Result<HashMap<String, Value>> {
         let mut result = HashMap::new();
 
-        for (_field_name, transform) in field_config {
+        for transform in field_config.values() {
             match transform {
                 crate::config::FieldTransform::Rename { from, to } => {
                     if let Some(value) = data.remove(from) {
@@ -92,9 +92,7 @@ impl EventTransformer {
 
         // Include remaining fields that weren't transformed
         for (k, v) in data {
-            if !result.contains_key(&k) {
-                result.insert(k, v);
-            }
+            result.entry(k).or_insert(v);
         }
 
         Ok(result)

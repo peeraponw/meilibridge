@@ -148,20 +148,22 @@ pub async fn get_pipeline_diagnostics(
     Path(table): Path<String>,
 ) -> Result<Json<PipelineDiagnostics>, StatusCode> {
     debug!("Getting pipeline diagnostics for table: {}", table);
-    
+
     // Get orchestrator reference
     let orchestrator = state.orchestrator.read().await;
-    
+
     // Get CDC coordinator
-    let cdc_coordinator = orchestrator.cdc_coordinator.as_ref()
+    let cdc_coordinator = orchestrator
+        .cdc_coordinator
+        .as_ref()
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let cdc = cdc_coordinator.read().await;
-    
+
     // Check if table is active
     // Note: CdcCoordinator tracks pause state globally, not per-table
     let is_paused = cdc.is_paused().await;
     let is_active = !is_paused;
-    
+
     // Get performance metrics from Prometheus (mock for now)
     let performance = PerformanceMetrics {
         events_per_second: 0.0,
@@ -170,7 +172,7 @@ pub async fn get_pipeline_diagnostics(
         p99_latency_ms: 0.0,
         current_batch_size: 100,
     };
-    
+
     // Get queue statistics
     let queue_stats = QueueStatistics {
         pending_events: 0,
@@ -178,7 +180,7 @@ pub async fn get_pipeline_diagnostics(
         dead_letter_count: 0,
         memory_usage_mb: 0.0,
     };
-    
+
     // Build response
     let diagnostics = PipelineDiagnostics {
         table: table.clone(),
@@ -202,7 +204,7 @@ pub async fn get_pipeline_diagnostics(
             recent_errors: vec![],
         },
     };
-    
+
     Ok(Json(diagnostics))
 }
 
@@ -211,11 +213,11 @@ pub async fn get_checkpoints_diagnostics(
     State(_state): State<ApiState>,
 ) -> Result<Json<CheckpointsDiagnostics>, StatusCode> {
     debug!("Getting checkpoints diagnostics");
-    
+
     // For now, return empty checkpoints since we can't access private field
     // In real implementation, this would need a public method on orchestrator
     let checkpoint_details = vec![];
-    
+
     Ok(Json(CheckpointsDiagnostics {
         total_checkpoints: checkpoint_details.len(),
         checkpoints: checkpoint_details,
@@ -227,7 +229,7 @@ pub async fn get_connections_diagnostics(
     State(_state): State<ApiState>,
 ) -> Result<Json<ConnectionsDiagnostics>, StatusCode> {
     debug!("Getting connections diagnostics");
-    
+
     // Mock implementation - in real implementation, query actual connection pools
     let pools = vec![
         PoolDiagnostics {
@@ -251,10 +253,10 @@ pub async fn get_connections_diagnostics(
             health_status: "healthy".to_string(),
         },
     ];
-    
+
     let total_active: usize = pools.iter().map(|p| p.active_connections).sum();
     let total_idle: usize = pools.iter().map(|p| p.idle_connections).sum();
-    
+
     Ok(Json(ConnectionsDiagnostics {
         total_connections: total_active + total_idle,
         total_active,
@@ -269,7 +271,7 @@ pub async fn get_event_trace(
     Path(event_id): Path<String>,
 ) -> Result<Json<EventTrace>, StatusCode> {
     debug!("Getting event trace for: {}", event_id);
-    
+
     // Mock implementation - in real implementation, query trace storage
     let trace = EventTrace {
         event_id: event_id.clone(),
@@ -288,17 +290,13 @@ pub async fn get_event_trace(
                 stage: "deduplication".to_string(),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 duration_ms: 0.3,
-                details: HashMap::from([
-                    ("result".to_string(), "unique".to_string()),
-                ]),
+                details: HashMap::from([("result".to_string(), "unique".to_string())]),
             },
             TracePoint {
                 stage: "transformation".to_string(),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 duration_ms: 2.1,
-                details: HashMap::from([
-                    ("fields_mapped".to_string(), "5".to_string()),
-                ]),
+                details: HashMap::from([("fields_mapped".to_string(), "5".to_string())]),
             },
             TracePoint {
                 stage: "meilisearch_sync".to_string(),
@@ -313,7 +311,7 @@ pub async fn get_event_trace(
         total_duration_ms: 19.6,
         status: "success".to_string(),
     };
-    
+
     Ok(Json(trace))
 }
 
@@ -323,16 +321,19 @@ pub async fn replay_events(
     Path(table): Path<String>,
     Query(params): Query<ReplayQuery>,
 ) -> Result<Json<ReplayResponse>, StatusCode> {
-    info!("Replay events requested for table: {} with params: {:?}", table, params);
-    
+    info!(
+        "Replay events requested for table: {} with params: {:?}",
+        table, params
+    );
+
     let dry_run = params.dry_run.unwrap_or(true);
     let _limit = params.limit.unwrap_or(1000);
-    
+
     if !dry_run {
         // Only allow dry-run in this implementation for safety
         return Err(StatusCode::FORBIDDEN);
     }
-    
+
     // Mock implementation
     let response = ReplayResponse {
         mode: "dry_run".to_string(),
@@ -341,7 +342,7 @@ pub async fn replay_events(
         errors: vec![],
         estimated_duration_seconds: 0.0,
     };
-    
+
     Ok(Json(response))
 }
 
@@ -357,7 +358,7 @@ pub async fn create_heap_dump(
     State(_state): State<ApiState>,
 ) -> Result<Json<HeapDumpResponse>, StatusCode> {
     info!("Heap dump requested");
-    
+
     // In a real implementation, this would use jemalloc or similar to create a heap dump
     // For now, return a mock response
     Err(StatusCode::NOT_IMPLEMENTED)

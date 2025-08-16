@@ -5,8 +5,10 @@
 <div align="center">
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/meilibridge/meilibridge)
+[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/binarytouch/meilibridge)
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![codecov](https://codecov.io/github/binary-touch/meilibridge/graph/badge.svg?token=E8W87QQO3G)](https://codecov.io/github/binary-touch/meilibridge)
+[![GitHub Release](https://img.shields.io/github/v/release/binary-touch/meilibridge?style=flat&logo=github)](https://github.com/binary-touch/meilibridge/releases/latest)
 
 **Lightning-fast PostgreSQL to Meilisearch sync engine**
 
@@ -103,7 +105,7 @@ docker run -d \
   -e MEILISEARCH_URL="http://localhost:7700" \
   -e MEILISEARCH_API_KEY="your-api-key" \
   -p 7701:7701 \
-  meilibridge/meilibridge:latest
+  binarytouch/meilibridge:latest
 
 # Check health status
 curl http://localhost:7701/health
@@ -167,7 +169,7 @@ docker run -d \
   --name meilibridge \
   -v $(pwd)/config.yaml:/config.yaml \
   -p 7701:7701 \
-  meilibridge/meilibridge:latest --config /config.yaml
+  binarytouch/meilibridge:latest --config /config.yaml
 
 # Using binary
 ./meilibridge --config config.yaml
@@ -561,5 +563,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <div align="center">
-Made with ❤️ by the MeiliBridge community
+Made with ❤️ in India
 </div>

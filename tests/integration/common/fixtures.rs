@@ -1,7 +1,10 @@
 // Test fixtures for integration tests
 
-use meilibridge::config::{Config, MeilisearchConfig, PostgreSQLConfig, PostgreSQLConnection, RedisConfig, SourceConfig, SyncTaskConfig, NamedSourceConfig};
 use meilibridge::api::ApiState;
+use meilibridge::config::{
+    Config, MeilisearchConfig, NamedSourceConfig, PostgreSQLConfig, PostgreSQLConnection,
+    RedisConfig, SourceConfig, SyncTaskConfig,
+};
 use meilibridge::pipeline::PipelineOrchestrator;
 use meilibridge::sync::SyncTaskManager;
 use std::collections::HashMap;
@@ -30,11 +33,14 @@ pub async fn setup_postgres_replication(
     let tables_list = tables.join(", ");
     client
         .execute(
-            &format!("CREATE PUBLICATION {} FOR TABLE {}", publication, tables_list),
+            &format!(
+                "CREATE PUBLICATION {} FOR TABLE {}",
+                publication, tables_list
+            ),
             &[],
         )
         .await?;
-    
+
     Ok(())
 }
 
@@ -58,11 +64,11 @@ pub async fn create_test_table(
             &[],
         )
         .await?;
-    
+
     Ok(())
 }
 
-// Meilisearch test fixtures  
+// Meilisearch test fixtures
 pub fn create_test_meilisearch_config(url: &str) -> MeilisearchConfig {
     MeilisearchConfig {
         url: url.to_string(),
@@ -89,20 +95,16 @@ pub fn create_test_redis_config(url: &str) -> RedisConfig {
 }
 
 // Complete config fixture
-pub fn create_test_config(
-    postgres_url: &str,
-    meilisearch_url: &str,
-    redis_url: &str,
-) -> Config {
+pub fn create_test_config(postgres_url: &str, meilisearch_url: &str, redis_url: &str) -> Config {
     Config {
         app: Default::default(),
-        source: Some(SourceConfig::PostgreSQL(create_test_postgres_config(postgres_url))),
-        sources: vec![
-            NamedSourceConfig {
-                name: "default".to_string(),
-                config: SourceConfig::PostgreSQL(create_test_postgres_config(postgres_url)),
-            }
-        ],
+        source: Some(SourceConfig::PostgreSQL(Box::new(
+            create_test_postgres_config(postgres_url),
+        ))),
+        sources: vec![NamedSourceConfig {
+            name: "default".to_string(),
+            config: SourceConfig::PostgreSQL(Box::new(create_test_postgres_config(postgres_url))),
+        }],
         sync_tasks: vec![],
         meilisearch: create_test_meilisearch_config(meilisearch_url),
         redis: create_test_redis_config(redis_url),
@@ -140,8 +142,14 @@ pub fn generate_test_data(count: usize) -> Vec<HashMap<String, serde_json::Value
         .map(|i| {
             let mut data = HashMap::new();
             data.insert("id".to_string(), serde_json::json!(i + 1));
-            data.insert("name".to_string(), serde_json::json!(format!("User {}", i + 1)));
-            data.insert("email".to_string(), serde_json::json!(format!("user{}@example.com", i + 1)));
+            data.insert(
+                "name".to_string(),
+                serde_json::json!(format!("User {}", i + 1)),
+            );
+            data.insert(
+                "email".to_string(),
+                serde_json::json!(format!("user{}@example.com", i + 1)),
+            );
             data
         })
         .collect()
@@ -152,33 +160,32 @@ pub async fn create_test_api_state() -> ApiState {
     let config = create_test_config(
         "postgres://localhost:5432/test",
         "http://localhost:7700",
-        "redis://localhost:6379"
+        "redis://localhost:6379",
     );
-    
-    let orchestrator = PipelineOrchestrator::new(config.clone())
-        .expect("Failed to create orchestrator");
+
+    let orchestrator =
+        PipelineOrchestrator::new(config.clone()).expect("Failed to create orchestrator");
     let task_manager = SyncTaskManager::new(config);
-    
+
     let state = ApiState::new(
         Arc::new(RwLock::new(orchestrator)),
         Arc::new(RwLock::new(task_manager)),
     );
-    
+
     // Add health registry
     let health_registry = Arc::new(meilibridge::health::HealthRegistry::new());
     state.with_health_registry(health_registry)
 }
 
 pub async fn start_test_server(state: ApiState) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    use axum::routing::{delete, get, post, put};
     use axum::Router;
-    use axum::routing::{get, post, put, delete};
     use meilibridge::api::handlers;
-    
+
     let app = Router::new()
         // Health check
         .route("/health", get(handlers::health))
         .route("/health/:component", get(handlers::get_component_health))
-        
         // Task management
         .route("/tasks", get(handlers::get_tasks))
         .route("/tasks", post(handlers::create_task))
@@ -186,29 +193,28 @@ pub async fn start_test_server(state: ApiState) -> (SocketAddr, tokio::task::Joi
         .route("/tasks/:id", delete(handlers::delete_task))
         .route("/tasks/:id/pause", put(handlers::pause_task))
         .route("/tasks/:id/resume", put(handlers::resume_task))
-        
         // CDC control
         .route("/cdc/status", get(handlers::get_cdc_status))
-        
         // Metrics
         .route("/metrics", get(handlers::get_metrics))
-        
         // Cache control
-        .route("/cache/clear", post(meilibridge::api::cache_handlers::clear_cache))
-        
+        .route(
+            "/cache/clear",
+            post(meilibridge::api::cache_handlers::clear_cache),
+        )
         .with_state(state);
-    
+
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind test server");
     let addr = listener.local_addr().unwrap();
-    
+
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    
+
     // Wait for server to start
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
+
     (addr, handle)
 }

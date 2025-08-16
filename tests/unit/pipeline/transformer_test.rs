@@ -1,9 +1,11 @@
 // Pipeline transformer tests
 
-use meilibridge::models::event::{Event, EventId, EventType, EventSource, EventData, EventMetadata};
+use chrono::Utc;
+use meilibridge::models::event::{
+    Event, EventData, EventId, EventMetadata, EventSource, EventType,
+};
 use serde_json::json;
 use std::collections::HashMap;
-use chrono::Utc;
 
 #[cfg(test)]
 mod transformer_tests {
@@ -118,14 +120,17 @@ mod transformer_tests {
     fn test_event_with_nested_data() {
         let mut data = HashMap::new();
         data.insert("id".to_string(), json!(1));
-        data.insert("profile".to_string(), json!({
-            "name": "Test User",
-            "age": 30,
-            "settings": {
-                "theme": "dark",
-                "notifications": true
-            }
-        }));
+        data.insert(
+            "profile".to_string(),
+            json!({
+                "name": "Test User",
+                "age": 30,
+                "settings": {
+                    "theme": "dark",
+                    "notifications": true
+                }
+            }),
+        );
 
         let event = Event {
             id: EventId::new(),
@@ -181,6 +186,9 @@ mod transformer_tests {
         };
 
         assert_eq!(event.metadata.transaction_id, Some("126".to_string()));
-        assert_eq!(event.metadata.custom.get("source_version"), Some(&json!("14.5")));
+        assert_eq!(
+            event.metadata.custom.get("source_version"),
+            Some(&json!("14.5"))
+        );
     }
 }

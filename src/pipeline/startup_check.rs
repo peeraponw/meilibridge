@@ -41,16 +41,19 @@ impl StartupChecker {
             return Ok(());
         }
 
-        info!("Found {} CDC-only tables (no initial full sync):", cdc_only_tables.len());
+        info!(
+            "Found {} CDC-only tables (no initial full sync):",
+            cdc_only_tables.len()
+        );
 
         for task in &cdc_only_tables {
             info!("  - Table '{}' -> Index '{}'", task.table, task.index);
-            
+
             // Warn if auto_create_index is disabled
             if !self.config.meilisearch.auto_create_index {
                 warn!(
                     "    ⚠️  auto_create_index is disabled. Index '{}' must exist in Meilisearch \
-                    or the first CDC event will fail.", 
+                    or the first CDC event will fail.",
                     task.index
                 );
             } else {
@@ -90,7 +93,7 @@ impl StartupChecker {
 
         info!("✓ Successfully connected to Meilisearch");
 
-        // For CDC-only tables with auto_create_index enabled, 
+        // For CDC-only tables with auto_create_index enabled,
         // we could pre-create indexes here, but it's better to let
         // them be created on-demand to avoid empty indexes
 
@@ -113,4 +116,3 @@ impl SyncTaskExt for SyncTaskConfig {
         !self.primary_key.is_empty() || global_pk.map(|s| !s.is_empty()).unwrap_or(false)
     }
 }
-

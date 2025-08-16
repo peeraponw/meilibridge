@@ -2,9 +2,9 @@
 # Tarpaulin configuration for MeiliBridge
 
 # Include only source files
-workspace = true
+workspace = false
 all-features = true
-run-types = ["Tests", "Doctests"]
+run-types = ["Lib"]
 
 # Exclude test files and other non-source files
 exclude-files = [
@@ -25,7 +25,7 @@ forward-signals = true
 count = true
 
 # Timeout for tests (in seconds)
-timeout = "300"
+timeout = "300s"
 
 # Ignore panics in tests
 ignore-panics = true

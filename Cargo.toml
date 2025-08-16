@@ -1,7 +1,8 @@
 [package]
 name = "meilibridge"
-version = "0.1.0"
+version = "0.1.4"
 edition = "2021"
+rust-version = "1.82"
 authors = ["Omkar Todkar"]
 description = "High-performance PostgreSQL to Meilisearch connector"
 license = "MIT"

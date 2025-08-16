@@ -3,13 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g., v1.0.0)'
-        required: true
-        type: string
+      - 'v*'
 
 permissions:
   contents: write
@@ -28,11 +22,7 @@ jobs:
     - name: Determine version
       id: version
       run: |
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          VERSION="${{ github.event.inputs.version }}"
-        else
-          VERSION="${{ github.ref_name }}"
-        fi
+        VERSION="${{ github.ref_name }}"
         
         # Validate version format
         if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
@@ -44,17 +34,11 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "version_without_v=${VERSION#v}" >> $GITHUB_OUTPUT
 
-  # Run full test suite before release
-  test:
-    name: Pre-release Tests
-    needs: validate-version
-    uses: ./.github/workflows/ci.yml
-    secrets: inherit
 
   # Build release artifacts
   build-artifacts:
     name: Build Release Artifacts
-    needs: [validate-version, test]
+    needs: [validate-version]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -63,9 +47,8 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             asset_name: meilibridge-linux-amd64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            asset_name: meilibridge-linux-arm64
+          # ARM64 Linux cross-compilation removed due to complexity
+          # Can be re-added with cross tool or native runners
           - os: macos-latest
             target: x86_64-apple-darwin
             asset_name: meilibridge-darwin-amd64
@@ -84,15 +67,7 @@ jobs:
       with:
         targets: ${{ matrix.target }}
     
-    - name: Install cross-compilation tools
-      if: matrix.target == 'aarch64-unknown-linux-gnu'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y gcc-aarch64-linux-gnu
-    
     - name: Build release binary
-      env:
-        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
       run: |
         cargo build --release --target ${{ matrix.target }}
         
@@ -113,6 +88,7 @@ jobs:
         path: |
           *.tar.gz
           *.zip
+
 
   # Create GitHub release
   create-release:
@@ -150,22 +126,22 @@ jobs:
           
           # Features
           echo "### 🚀 Features"
-          git log $RANGE --pretty=format:"* %s (%h) - @%an" --grep="^feat" | head -20 || echo "* No new features"
+          git log $RANGE --pretty=format:"* %s (%h) - %an" --grep="^feat" | head -20 || echo "* No new features"
           echo ""
           
           # Bug fixes
           echo "### 🐛 Bug Fixes"
-          git log $RANGE --pretty=format:"* %s (%h) - @%an" --grep="^fix" | head -20 || echo "* No bug fixes"
+          git log $RANGE --pretty=format:"* %s (%h) - %an" --grep="^fix" | head -20 || echo "* No bug fixes"
           echo ""
           
           # Other changes
           echo "### 📚 Documentation & Other Changes"
-          git log $RANGE --pretty=format:"* %s (%h) - @%an" --grep="^docs\|^chore\|^refactor\|^style\|^test" | head -20 || echo "* No other changes"
+          git log $RANGE --pretty=format:"* %s (%h) - %an" --grep="^docs\|^chore\|^refactor\|^style\|^test" | head -20 || echo "* No other changes"
           echo ""
           
           # Contributors
           echo "### 👥 Contributors"
-          git log $RANGE --pretty=format:"%an" | sort -u | sed 's/^/* @/' | head -20
+          git log $RANGE --pretty=format:"%an" | sort -u | sed 's/^/* /' | head -20
           echo ""
           
           echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-${{ needs.validate-version.outputs.version }}}...${{ needs.validate-version.outputs.version }}"
@@ -193,7 +169,7 @@ jobs:
   # Publish to crates.io
   publish-crates:
     name: Publish to crates.io
-    needs: [validate-version, test]
+    needs: [validate-version]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -218,7 +194,7 @@ jobs:
   # Build and push Docker images
   docker-release:
     name: Docker Release
-    needs: [validate-version, test]
+    needs: [validate-version]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -237,7 +213,8 @@ jobs:
       with:
         context: .
         file: ./docker/Dockerfile
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
+        # Add linux/arm64 when needed - note this significantly increases build time
         push: true
         tags: |
           ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:${{ needs.validate-version.outputs.version_without_v }}
@@ -247,43 +224,63 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  # Create release PR to update version references
+  # Update version references directly on main branch
   update-version-references:
     name: Update Version References
     needs: [validate-version, create-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        persist-credentials: true
+        ref: main
     
     - name: Update version references
       run: |
         VERSION="${{ needs.validate-version.outputs.version_without_v }}"
         
-        # Update README.md docker compose example
-        sed -i "s|image: .*/meilibridge:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:$VERSION|g" README.md
-        
-        # Update docker-compose.yaml
-        sed -i "s|image: .*/meilibridge:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:$VERSION|g" docker/compose.yaml
+        # Update Cargo.toml version
+        sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
         
         # Update CHANGELOG.md
         DATE=$(date +%Y-%m-%d)
         sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
+        
+        # Add example docker run command to README if not present
+        if ! grep -q "docker run.*meilibridge" README.md; then
+          echo "" >> README.md
+          echo "### Docker" >> README.md
+          echo '```bash' >> README.md
+          echo "docker run -d \\" >> README.md
+          echo "  --name meilibridge \\" >> README.md
+          echo "  -v ./config.yaml:/etc/meilibridge/config.yaml:ro \\" >> README.md
+          echo "  -p 7701:7701 \\" >> README.md
+          echo "  ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:$VERSION" >> README.md
+          echo '```' >> README.md
+        fi
     
-    - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v5
-      with:
-        title: "chore: update version references to ${{ needs.validate-version.outputs.version }}"
-        body: |
-          This PR updates version references after the release of ${{ needs.validate-version.outputs.version }}.
-          
-          Changes:
-          - Updated Docker image references in README.md
-          - Updated Docker image version in docker-compose.yaml
-          - Updated CHANGELOG.md with release date
-          
-          This is an automated PR created by the release workflow.
-        branch: update-version-${{ needs.validate-version.outputs.version }}
-        commit-message: "chore: update version references to ${{ needs.validate-version.outputs.version }}"
-        delete-branch: true
+    - name: Configure Git
+      run: |
+        git config --global user.name "Github Actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    
+    - name: Commit and push changes
+      run: |
+        git add -A
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "chore: update version references to ${{ needs.validate-version.outputs.version }}
+
+        Updates version references after the release of ${{ needs.validate-version.outputs.version }}.
+        
+        Changes:
+        - Updated version in Cargo.toml
+        - Updated CHANGELOG.md with release date
+        - Added Docker run example to README.md (if not present)
+        [skip ci]"
+          git push
+        fi

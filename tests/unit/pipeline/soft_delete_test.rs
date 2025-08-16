@@ -1,15 +1,21 @@
 // Soft delete handler tests
 
-use meilibridge::models::event::{Event, EventId, EventType, EventSource, EventData, EventMetadata};
+use chrono::Utc;
+use meilibridge::models::event::{
+    Event, EventData, EventId, EventMetadata, EventSource, EventType,
+};
 use serde_json::json;
 use std::collections::HashMap;
-use chrono::Utc;
 
 #[cfg(test)]
 mod soft_delete_tests {
     use super::*;
 
-    fn create_test_event(event_type: EventType, old: Option<HashMap<String, serde_json::Value>>, new: Option<HashMap<String, serde_json::Value>>) -> Event {
+    fn create_test_event(
+        event_type: EventType,
+        old: Option<HashMap<String, serde_json::Value>>,
+        new: Option<HashMap<String, serde_json::Value>>,
+    ) -> Event {
         Event {
             id: EventId::new(),
             event_type,
@@ -48,10 +54,8 @@ mod soft_delete_tests {
         let event = create_test_event(EventType::Update, Some(old_data), Some(new_data));
 
         // Check that deleted_at changed from null to a timestamp
-        let old_deleted = event.data.old.as_ref()
-            .and_then(|d| d.get("deleted_at"));
-        let new_deleted = event.data.new.as_ref()
-            .and_then(|d| d.get("deleted_at"));
+        let old_deleted = event.data.old.as_ref().and_then(|d| d.get("deleted_at"));
+        let new_deleted = event.data.new.as_ref().and_then(|d| d.get("deleted_at"));
 
         assert_eq!(old_deleted, Some(&json!(null)));
         assert!(new_deleted.is_some() && new_deleted != Some(&json!(null)));
@@ -70,10 +74,16 @@ mod soft_delete_tests {
 
         let event = create_test_event(EventType::Update, Some(old_data), Some(new_data));
 
-        let old_deleted = event.data.old.as_ref()
+        let old_deleted = event
+            .data
+            .old
+            .as_ref()
             .and_then(|d| d.get("is_deleted"))
             .and_then(|v| v.as_bool());
-        let new_deleted = event.data.new.as_ref()
+        let new_deleted = event
+            .data
+            .new
+            .as_ref()
             .and_then(|d| d.get("is_deleted"))
             .and_then(|v| v.as_bool());
 
@@ -94,10 +104,16 @@ mod soft_delete_tests {
 
         let event = create_test_event(EventType::Update, Some(old_data), Some(new_data));
 
-        let old_status = event.data.old.as_ref()
+        let old_status = event
+            .data
+            .old
+            .as_ref()
             .and_then(|d| d.get("status"))
             .and_then(|v| v.as_str());
-        let new_status = event.data.new.as_ref()
+        let new_status = event
+            .data
+            .new
+            .as_ref()
             .and_then(|d| d.get("status"))
             .and_then(|v| v.as_str());
 
@@ -121,10 +137,8 @@ mod soft_delete_tests {
         let event = create_test_event(EventType::Update, Some(old_data), Some(new_data));
 
         // deleted_at remains null in both old and new
-        let old_deleted = event.data.old.as_ref()
-            .and_then(|d| d.get("deleted_at"));
-        let new_deleted = event.data.new.as_ref()
-            .and_then(|d| d.get("deleted_at"));
+        let old_deleted = event.data.old.as_ref().and_then(|d| d.get("deleted_at"));
+        let new_deleted = event.data.new.as_ref().and_then(|d| d.get("deleted_at"));
 
         assert_eq!(old_deleted, Some(&json!(null)));
         assert_eq!(new_deleted, Some(&json!(null)));
@@ -158,10 +172,8 @@ mod soft_delete_tests {
         let event = create_test_event(EventType::Update, Some(old_data), Some(new_data));
 
         // This is an undelete operation
-        let old_deleted = event.data.old.as_ref()
-            .and_then(|d| d.get("deleted_at"));
-        let new_deleted = event.data.new.as_ref()
-            .and_then(|d| d.get("deleted_at"));
+        let old_deleted = event.data.old.as_ref().and_then(|d| d.get("deleted_at"));
+        let new_deleted = event.data.new.as_ref().and_then(|d| d.get("deleted_at"));
 
         assert!(old_deleted.is_some() && old_deleted != Some(&json!(null)));
         assert_eq!(new_deleted, Some(&json!(null)));
@@ -179,9 +191,8 @@ mod soft_delete_tests {
 
         assert_eq!(event.event_type, EventType::Create);
         assert!(event.data.new.is_some());
-        
-        let deleted_at = event.data.new.as_ref()
-            .and_then(|d| d.get("deleted_at"));
+
+        let deleted_at = event.data.new.as_ref().and_then(|d| d.get("deleted_at"));
         assert_eq!(deleted_at, Some(&json!(null)));
     }
 

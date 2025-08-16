@@ -27,10 +27,10 @@ pub async fn get_cache_stats(
     // Check if we have a PostgreSQL cache
     if let Some(cache) = &state.postgres_cache {
         let stats = cache.get_stats().await;
-        
+
         // Export metrics while we're at it
         stats.export_metrics();
-        
+
         let response = CacheStatsResponse {
             size: stats.size,
             hits: stats.hits,
@@ -40,14 +40,16 @@ pub async fn get_cache_stats(
             enabled: true,
             max_size: 100, // TODO: Get this from config
         };
-        
+
         // Note: This shows stats for the API's cache instance only.
         // The actual PostgreSQL adapter uses its own cache instance.
-        
+
         Ok(Json(response))
     } else {
         // No PostgreSQL cache available (might be using a different source)
-        Err(MeiliBridgeError::NotFound("Statement cache not available for current data source".to_string()))
+        Err(MeiliBridgeError::NotFound(
+            "Statement cache not available for current data source".to_string(),
+        ))
     }
 }
 
@@ -59,19 +61,20 @@ pub async fn clear_cache(
         // Get current size before clearing
         let stats = cache.get_stats().await;
         let cleared_count = stats.size;
-        
+
         // Clear the cache
         cache.clear().await;
-        
+
         let response = CacheClearResponse {
             message: "Statement cache cleared successfully".to_string(),
             cleared_count,
         };
-        
+
         Ok(Json(response))
     } else {
         // No PostgreSQL cache available
-        Err(MeiliBridgeError::NotFound("Statement cache not available for current data source".to_string()))
+        Err(MeiliBridgeError::NotFound(
+            "Statement cache not available for current data source".to_string(),
+        ))
     }
 }
-
