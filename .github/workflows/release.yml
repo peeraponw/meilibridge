@@ -236,6 +236,7 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         persist-credentials: true
+        ref: main
     
     - name: Update version references
       run: |
@@ -281,5 +282,5 @@ jobs:
         - Updated CHANGELOG.md with release date
         - Added Docker run example to README.md (if not present)
         [skip ci]"
-          git push origin main
+          git push
         fi

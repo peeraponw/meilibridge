@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2025-08-16
+
 ### Changed
 - **BREAKING**: Changed default API port from 8080 to 7701 to align with Meilisearch ecosystem
 - **BREAKING**: Changed metrics port from 9090 to 7702 (future implementation)
