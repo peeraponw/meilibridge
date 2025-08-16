@@ -227,7 +227,7 @@ Expand-Archive -Path "meilibridge.zip" -DestinationPath "."
 **Note**: 
 - All Unix binaries are packaged as `.tar.gz` files
 - Windows binary is packaged as `.zip` file
-- Linux ARM64 is not currently available in pre-built releases
+- Linux ARM64 can be built using `make build-linux-arm64` (see Building for ARM64 below)
 </details>
 
 ### Verify Installation
@@ -245,6 +245,53 @@ meilibridge generate-sample > config.yaml
 # Start with debug logging
 meilibridge --config config.yaml --log-level debug
 ```
+
+### Building for ARM64
+
+<details>
+<summary><b>Build Linux ARM64 Binary</b></summary>
+
+```bash
+# Install build dependencies (one-time setup)
+make install-deps
+
+# Build using Docker
+make build-linux-arm64
+
+# Package the binary
+make package-linux-arm64
+
+# The packaged binary will be in dist/meilibridge-linux-arm64.tar.gz
+```
+
+**Requirements:**
+- Docker must be installed and running
+- Docker buildx support (included in recent Docker versions)
+</details>
+
+<details>
+<summary><b>Build Multi-Architecture Docker Images</b></summary>
+
+```bash
+# Build multi-arch Docker image locally (AMD64 + ARM64)
+make docker-build-multiarch
+
+# Build and push to Docker Hub
+make docker-push
+
+# Verify the multi-arch image
+make docker-verify
+
+# Custom registry and image name
+DOCKER_USERNAME=myuser DOCKER_REGISTRY=ghcr.io make docker-push
+```
+
+The multi-architecture Docker image supports:
+- `linux/amd64` - For standard x86_64 servers
+- `linux/arm64` - For ARM64 servers (AWS Graviton, Apple Silicon, etc.)
+
+Docker will automatically pull the correct architecture for your platform.
+</details>
 
 ### Next Steps
 

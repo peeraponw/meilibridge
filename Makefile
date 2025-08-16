@@ -1,4 +1,15 @@
 .PHONY: help build run test clean docker-up docker-down docker-logs docker-reset dev
+.PHONY: build-linux-arm64 build-linux-amd64 build-all-platforms docker-build docker-build-multiarch docker-push
+
+# Variables
+DOCKER_REGISTRY ?= docker.io
+DOCKER_USERNAME ?= binarytouch
+DOCKER_IMAGE ?= meilibridge
+# Get clean version from git tag (remove 'v' prefix if present)
+VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "latest")
+# For builds not on exact tags, use git describe for informational purposes
+FULL_VERSION ?= $(shell git describe --tags --always --dirty)
+PLATFORMS ?= linux/amd64,linux/arm64
 
 # Default target
 help:
@@ -9,11 +20,20 @@ help:
 	@echo "  make test         - Run all tests"
 	@echo "  make clean        - Clean build artifacts"
 	@echo ""
+	@echo "Cross-Platform Build Commands:"
+	@echo "  make build-linux-arm64    - Build for Linux ARM64 using Docker"
+	@echo "  make build-linux-amd64    - Build for Linux AMD64 using Docker"
+	@echo "  make build-all-platforms  - Build for all platforms"
+	@echo "  make package-linux-arm64  - Package ARM64 binary as tar.gz"
+	@echo ""
 	@echo "Docker Commands:"
 	@echo "  make docker-up    - Start all Docker services"
 	@echo "  make docker-down  - Stop all Docker services"
 	@echo "  make docker-logs  - View logs from all services"
 	@echo "  make docker-reset - Reset all data (WARNING: destructive)"
+	@echo "  make docker-build - Build Docker image for current platform"
+	@echo "  make docker-build-multiarch - Build multi-arch Docker image"
+	@echo "  make docker-push  - Push multi-arch image to registry"
 	@echo ""
 	@echo "Quick Start:"
 	@echo "  make docker-up    - Start services"
@@ -103,3 +123,142 @@ validate:
 status:
 	@echo "Checking MeiliBridge status..."
 	@curl -s http://localhost:7701/api/status || echo "API server not running"
+
+# Cross-platform builds
+build-linux-arm64:
+	@echo "Building for Linux ARM64 using Docker..."
+	@docker build --platform linux/arm64 \
+		--target builder \
+		-t meilibridge-builder-arm64 \
+		-f docker/Dockerfile .
+	@docker create --name temp-meilibridge-arm64 meilibridge-builder-arm64
+	@mkdir -p target/aarch64-unknown-linux-gnu/release
+	@docker cp temp-meilibridge-arm64:/usr/src/meilibridge/target/release/meilibridge target/aarch64-unknown-linux-gnu/release/meilibridge
+	@docker rm temp-meilibridge-arm64
+	@echo "Binary extracted to: target/aarch64-unknown-linux-gnu/release/meilibridge"
+
+build-linux-amd64:
+	@echo "Building for Linux AMD64 using Docker..."
+	@docker build --platform linux/amd64 \
+		--target builder \
+		-t meilibridge-builder-amd64 \
+		-f docker/Dockerfile .
+	@docker create --name temp-meilibridge-amd64 meilibridge-builder-amd64
+	@mkdir -p target/x86_64-unknown-linux-gnu/release
+	@docker cp temp-meilibridge-amd64:/usr/src/meilibridge/target/release/meilibridge target/x86_64-unknown-linux-gnu/release/meilibridge
+	@docker rm temp-meilibridge-amd64
+	@echo "Binary extracted to: target/x86_64-unknown-linux-gnu/release/meilibridge"
+
+build-all-platforms: build-linux-amd64 build-linux-arm64
+	@echo "All platform builds complete!"
+
+# Docker multi-architecture builds
+docker-setup-buildx:
+	@echo "Setting up Docker buildx..."
+	@docker buildx create --name meilibridge-builder --use || docker buildx use meilibridge-builder
+	@docker buildx inspect --bootstrap
+
+docker-build:
+	@echo "Building Docker image for current platform..."
+	@echo "Version: $(VERSION) (Full: $(FULL_VERSION))"
+	docker build -t $(DOCKER_USERNAME)/$(DOCKER_IMAGE):$(VERSION) \
+		--build-arg VERSION=$(VERSION) \
+		-f docker/Dockerfile .
+	@if [ "$(VERSION)" != "latest" ]; then \
+		docker tag $(DOCKER_USERNAME)/$(DOCKER_IMAGE):$(VERSION) $(DOCKER_USERNAME)/$(DOCKER_IMAGE):latest; \
+	fi
+
+docker-build-multiarch: docker-setup-buildx
+	@echo "Building multi-architecture Docker image..."
+	@echo "Platforms: $(PLATFORMS)"
+	@echo "Version: $(VERSION) (Full: $(FULL_VERSION))"
+	@if [ "$(VERSION)" = "latest" ]; then \
+		docker buildx build \
+			--platform $(PLATFORMS) \
+			--tag $(DOCKER_USERNAME)/$(DOCKER_IMAGE):latest \
+			--file docker/Dockerfile \
+			--build-arg VERSION=$(FULL_VERSION) \
+			.; \
+	else \
+		docker buildx build \
+			--platform $(PLATFORMS) \
+			--tag $(DOCKER_USERNAME)/$(DOCKER_IMAGE):$(VERSION) \
+			--tag $(DOCKER_USERNAME)/$(DOCKER_IMAGE):latest \
+			--file docker/Dockerfile \
+			--build-arg VERSION=$(VERSION) \
+			.; \
+	fi
+
+docker-push: docker-setup-buildx
+	@echo "Building and pushing multi-architecture Docker image..."
+	@echo "Registry: $(DOCKER_REGISTRY)"
+	@echo "Image: $(DOCKER_USERNAME)/$(DOCKER_IMAGE)"
+	@echo "Platforms: $(PLATFORMS)"
+	@echo "Version: $(VERSION) (Full: $(FULL_VERSION))"
+	@if [ "$(VERSION)" = "latest" ]; then \
+		echo "Warning: Not on a tagged release, pushing as 'latest' only"; \
+		docker buildx build \
+			--platform $(PLATFORMS) \
+			--tag $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(DOCKER_IMAGE):latest \
+			--file docker/Dockerfile \
+			--build-arg VERSION=$(FULL_VERSION) \
+			--push \
+			.; \
+		echo ""; \
+		echo "Pushed to:"; \
+		echo "  - $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(DOCKER_IMAGE):latest"; \
+	else \
+		docker buildx build \
+			--platform $(PLATFORMS) \
+			--tag $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(DOCKER_IMAGE):$(VERSION) \
+			--tag $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(DOCKER_IMAGE):latest \
+			--file docker/Dockerfile \
+			--build-arg VERSION=$(VERSION) \
+			--push \
+			.; \
+		echo ""; \
+		echo "Pushed to:"; \
+		echo "  - $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(DOCKER_IMAGE):$(VERSION)"; \
+		echo "  - $(DOCKER_REGISTRY)/$(DOCKER_USERNAME)/$(DOCKER_IMAGE):latest"; \
+	fi
+
+# Package release artifacts
+package-linux-arm64: build-linux-arm64
+	@echo "Packaging Linux ARM64 binary..."
+	@mkdir -p dist
+	@cd target/aarch64-unknown-linux-gnu/release && \
+		tar czf ../../../dist/meilibridge-linux-arm64.tar.gz meilibridge
+	@echo "Package created: dist/meilibridge-linux-arm64.tar.gz"
+
+package-all: package-linux-arm64
+	@echo "All packages created in dist/"
+
+# Clean everything including cross compilation artifacts
+deep-clean: clean
+	rm -rf target/
+	rm -rf dist/
+	docker buildx rm meilibridge-builder || true
+
+# Install development dependencies
+install-deps:
+	@echo "Installing development dependencies..."
+	@echo "Checking Docker..."
+	@if ! command -v docker > /dev/null 2>&1; then \
+		echo "ERROR: Docker is required for cross-platform builds. Please install Docker first."; \
+		exit 1; \
+	fi
+	@echo "Installing cargo-watch for development..."
+	cargo install cargo-watch
+	@echo "Setting up Docker buildx for multi-arch builds..."
+	@docker buildx create --name meilibridge-builder --use 2>/dev/null || true
+	@echo ""
+	@echo "Dependencies installed!"
+	@echo "You can now use:"
+	@echo "  make build-linux-arm64      - Build ARM64 binary using Docker"
+	@echo "  make build-linux-amd64      - Build AMD64 binary using Docker"
+	@echo "  make docker-build-multiarch - Build multi-arch Docker image"
+
+# Verify multi-arch image
+docker-verify:
+	@echo "Verifying multi-architecture image..."
+	docker buildx imagetools inspect $(DOCKER_USERNAME)/$(DOCKER_IMAGE):latest
