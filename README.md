@@ -14,7 +14,7 @@
 
 Real-time data synchronization with automatic retries, parallel processing, and zero downtime
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Contributing](#-contributing) • [Documentation](docs/)
+[Features](#-features) • [Quick Start](#-quick-start) • [Monitoring](#-monitoring--observability) • [Configuration](#-configuration) • [Contributing](#-contributing) • [Documentation](docs/)
 
 </div>
 
@@ -233,8 +233,60 @@ meilibridge --config config.yaml --log-level debug
 ### Next Steps
 
 - 📚 Read the [Getting Started Guide](docs/getting-started.md) for detailed setup
-- 📊 Set up [monitoring](#monitoring--logging) with Prometheus
-- 🚀 Deploy to production with our [deployment guide](docs/deployment.md)
+- 📊 Set up [monitoring](#monitoring--observability) with Prometheus
+- 🚀 Check our [deployment examples](docker/) for production deployment
+
+---
+
+## 📊 Monitoring & Observability
+
+MeiliBridge provides comprehensive monitoring capabilities:
+
+### Prometheus Metrics
+
+```yaml
+# Enable metrics in config.yaml
+metrics:
+  enabled: true
+  port: 9090
+  path: /metrics
+```
+
+Available metrics:
+- `meilibridge_events_processed_total` - Total events processed
+- `meilibridge_events_failed_total` - Failed events count
+- `meilibridge_sync_lag_seconds` - Replication lag in seconds
+- `meilibridge_batch_size` - Current batch size
+- `meilibridge_checkpoint_lag` - Checkpoint delay
+
+### Health Endpoints
+
+- `GET /health` - Overall system health
+- `GET /health/liveness` - Kubernetes liveness probe
+- `GET /health/readiness` - Kubernetes readiness probe
+
+### Grafana Dashboard
+
+Import our [Grafana dashboard](monitoring/grafana-dashboard.json) for visualizing:
+- Event throughput and latency
+- Error rates and recovery metrics
+- Resource utilization
+- Sync task status
+
+### Logging
+
+Configure structured logging:
+
+```yaml
+logging:
+  level: info  # trace, debug, info, warn, error
+  format: json # json or pretty
+```
+
+Use correlation IDs to trace requests:
+```bash
+grep "correlation_id=abc123" logs.json
+```
 
 ---
 
@@ -492,49 +544,22 @@ COMMANDS:
 
 ## 🤝 Contributing
 
-We love contributions! Whether you're fixing bugs, adding features, or improving documentation, we appreciate your help.
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
 
-### Quick Contribution Guide
+- 📝 How to submit bug reports and feature requests
+- 🔧 Setting up your development environment
+- 🚀 Our development workflow and coding standards
+- ✅ Testing requirements and guidelines
 
-1. **Fork & Clone**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/meilibridge.git
-   cd meilibridge
-   ```
+For a quick start:
+```bash
+git clone https://github.com/YOUR_USERNAME/meilibridge.git
+cd meilibridge
+cargo build
+cargo test
+```
 
-2. **Set Up Development Environment**
-   ```bash
-   # Install Rust
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   
-   # Install dependencies
-   cargo build
-   
-   # Run tests
-   cargo test
-   ```
-
-3. **Make Your Changes**
-   - Create a feature branch: `git checkout -b feature/amazing-feature`
-   - Make your changes
-   - Add tests if applicable
-   - Ensure all tests pass: `cargo test`
-
-4. **Submit Pull Request**
-   - Commit your changes: `git commit -m 'Add amazing feature'`
-   - Push to your fork: `git push origin feature/amazing-feature`
-   - Open a pull request
-
-### Development Resources
-
-- 📖 [Architecture Overview](docs/configuration-architecture.md) - Understand the codebase
-- 🔧 [API Development Guide](docs/api-development.md) - Add new API endpoints
-- 🔄 [CDC Operations Guide](docs/cdc-operations.md) - Work with CDC components
-- 🗺️ [Roadmap](tasks/roadmap.md) - See what's planned
-
-### Code of Conduct
-
-Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
+**Code of Conduct**: This project follows our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ---
 
@@ -544,7 +569,7 @@ Please note that this project is released with a [Contributor Code of Conduct](C
 - **[Configuration & Architecture](docs/configuration-architecture.md)** - Deep dive into configuration
 - **[API Reference](docs/api-development.md)** - REST API documentation
 - **[CDC Operations](docs/cdc-operations.md)** - CDC setup and troubleshooting
-- **[Roadmap](tasks/roadmap.md)** - Future plans and features
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 
 ---
 
@@ -552,7 +577,7 @@ Please note that this project is released with a [Contributor Code of Conduct](C
 
 - 📋 [GitHub Issues](https://github.com/binary-touch/meilibridge/issues) - Report bugs or request features
 - 💬 [Discussions](https://github.com/binary-touch/meilibridge/discussions) - Ask questions and share ideas
-- 📧 Email: support@meilibridge.dev
+- 📖 [Documentation](docs/) - Browse all documentation
 
 ---
 
