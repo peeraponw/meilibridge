@@ -197,21 +197,37 @@ cargo build --release
 <summary><b>Download Pre-built Binary</b></summary>
 
 ```bash
-# Linux
-curl -L https://github.com/binary-touch/meilibridge/releases/latest/download/meilibridge-linux-amd64 -o meilibridge
-
-# macOS (Intel)
-curl -L https://github.com/binary-touch/meilibridge/releases/latest/download/meilibridge-darwin-amd64 -o meilibridge
-
-# macOS (Apple Silicon)
-curl -L https://github.com/binary-touch/meilibridge/releases/latest/download/meilibridge-darwin-arm64 -o meilibridge
-
-# Make executable
+# Linux (x86_64)
+curl -L https://github.com/binary-touch/meilibridge/releases/latest/download/meilibridge-linux-amd64.tar.gz -o meilibridge.tar.gz
+tar -xzf meilibridge.tar.gz
 chmod +x meilibridge
 
-# Run
+# macOS (Intel)
+curl -L https://github.com/binary-touch/meilibridge/releases/latest/download/meilibridge-darwin-amd64.tar.gz -o meilibridge.tar.gz
+tar -xzf meilibridge.tar.gz
+chmod +x meilibridge
+
+# macOS (Apple Silicon M1/M2/M3)
+curl -L https://github.com/binary-touch/meilibridge/releases/latest/download/meilibridge-darwin-arm64.tar.gz -o meilibridge.tar.gz
+tar -xzf meilibridge.tar.gz
+chmod +x meilibridge
+
+# Windows (PowerShell)
+# Download the Windows binary
+Invoke-WebRequest -Uri "https://github.com/binary-touch/meilibridge/releases/latest/download/meilibridge-windows-amd64.exe.zip" -OutFile "meilibridge.zip"
+# Extract the zip file
+Expand-Archive -Path "meilibridge.zip" -DestinationPath "."
+# Run the executable
+.\meilibridge.exe --config config.yaml
+
+# Run on Unix-like systems
 ./meilibridge --config config.yaml
 ```
+
+**Note**: 
+- All Unix binaries are packaged as `.tar.gz` files
+- Windows binary is packaged as `.zip` file
+- Linux ARM64 is not currently available in pre-built releases
 </details>
 
 ### Verify Installation
@@ -328,31 +344,60 @@ sync_tasks:
 ```yaml
 source:
   type: postgresql
-  postgresql:
-    connection:
-      host: localhost           # PostgreSQL host
-      port: 5432               # PostgreSQL port
-      database: myapp          # Database name
-      username: postgres       # Username (needs REPLICATION privilege)
-      password: secret         # Password (supports ${ENV_VAR})
+  # Connection parameters
+  host: localhost               # PostgreSQL host
+  port: 5432                    # PostgreSQL port
+  database: myapp               # Database name
+  username: postgres            # Username (needs REPLICATION privilege)
+  password: ${POSTGRES_PASSWORD} # Password (supports ${ENV_VAR})
+  
+  # Replication settings
+  slot_name: meilibridge_slot   # Replication slot name (default: "meilibridge")
+  publication: meilibridge_pub  # Publication name (default: "meilibridge_pub")
+  
+  # Connection pool settings
+  pool:
+    max_size: 10                # Maximum connections
+    min_idle: 1                 # Minimum idle connections
+    connection_timeout: 30      # Connection timeout (seconds)
+    idle_timeout: 600           # Idle connection timeout (seconds)
+  
+  # SSL/TLS configuration
+  ssl:
+    mode: disable               # disable, prefer, require, verify-ca, verify-full
+    ca_cert: /path/to/ca.crt    # CA certificate path
+    client_cert: /path/to/cert  # Client certificate
+    client_key: /path/to/key    # Client key
+  
+  # Statement cache
+  statement_cache:
+    enabled: true               # Enable prepared statement caching
+    max_size: 100               # Maximum cached statements
+```
+
+#### Multiple Sources (Multi-database)
+
+```yaml
+sources:
+  - name: primary               # Unique source identifier
+    type: postgresql
+    host: primary.db.com
+    port: 5432
+    database: main
+    username: replicator
+    password: ${PRIMARY_PASSWORD}
+    slot_name: meilibridge_primary
+    publication: meilibridge_pub_primary
     
-    # Replication settings
-    slot_name: meilibridge_slot      # Replication slot name
-    publication_name: meilibridge_pub # Publication name
-    create_slot: true                # Auto-create replication slot
-    
-    # Connection pool settings
-    pool:
-      max_size: 10              # Maximum connections
-      min_idle: 2               # Minimum idle connections
-      acquire_timeout: 30       # Connection acquire timeout (seconds)
-      idle_timeout: 600         # Idle connection timeout (seconds)
-      max_lifetime: 1800        # Maximum connection lifetime (seconds)
-    
-    # Statement cache
-    statement_cache:
-      enabled: true             # Enable prepared statement caching
-      max_size: 100            # Maximum cached statements
+  - name: secondary
+    type: postgresql
+    host: secondary.db.com
+    port: 5432
+    database: analytics
+    username: replicator
+    password: ${SECONDARY_PASSWORD}
+    slot_name: meilibridge_secondary
+    publication: meilibridge_pub_secondary
 ```
 </details>
 
@@ -364,20 +409,30 @@ source:
 ```yaml
 meilisearch:
   url: http://localhost:7700    # Meilisearch URL
-  api_key: masterKey           # API key (supports ${ENV_VAR})
-  timeout: 30                  # Request timeout (seconds)
+  api_key: ${MEILI_MASTER_KEY} # API key (supports ${ENV_VAR})
+  timeout: 30                   # Request timeout (seconds)
+  max_connections: 10           # Connection pool size
+  batch_size: 1000              # Batch size for bulk operations
+  auto_create_index: true       # Auto-create missing indexes
+  primary_key: id               # Default primary key field
   
-  # Retry settings
-  max_retries: 3               # Maximum retry attempts
-  retry_on_timeout: true       # Retry on timeout errors
-  auto_create_index: true      # Auto-create missing indexes
-  primary_key: id              # Default primary key field
+  # Index settings template (applied to new indexes)
+  index_settings:
+    searchable_attributes: []   # Fields to search
+    displayed_attributes: []    # Fields to return
+    filterable_attributes: []   # Fields for filtering
+    sortable_attributes: []     # Fields for sorting
+    ranking_rules: []           # Custom ranking rules
+    stop_words: []              # Stop words list
+    synonyms: {}                # Synonyms mapping
   
   # Circuit breaker (fault tolerance)
   circuit_breaker:
-    enabled: true              # Enable circuit breaker
-    failure_threshold: 5       # Failures before opening
-    reset_timeout: 60          # Reset timeout (seconds)
+    enabled: true               # Enable circuit breaker
+    error_rate: 0.5             # Open circuit at 50% error rate
+    min_request_count: 10       # Min requests before evaluation
+    consecutive_failures: 5     # Or 5 consecutive failures
+    timeout_secs: 60            # Time before half-open state
 ```
 </details>
 
@@ -387,6 +442,7 @@ meilisearch:
 ```yaml
 sync_tasks:
   - id: users_sync              # Unique task ID
+    source_name: primary        # Source name (for multi-source setups)
     table: public.users         # Source table (schema.table)
     index: users                # Target Meilisearch index
     primary_key: id             # Primary key field
@@ -394,6 +450,15 @@ sync_tasks:
     # Sync behavior
     full_sync_on_start: true    # Perform full sync on startup
     auto_start: true            # Auto-start this task
+    
+    # Soft delete detection
+    soft_delete:
+      field: status             # Field to check
+      delete_values:            # Values indicating deletion
+        - DELETED
+        - INACTIVE
+      handle_on_full_sync: true # Filter during full sync
+      handle_on_cdc: true       # Convert to DELETE during CDC
     
     # Filtering
     filter:
@@ -434,7 +499,7 @@ sync_tasks:
 <details>
 <summary><b>Advanced Configuration</b></summary>
 
-#### Redis Configuration (Optional)
+#### Redis Configuration
 
 ```yaml
 redis:
@@ -456,12 +521,31 @@ performance:
   parallel_processing:
     enabled: true              # Enable parallel processing
     workers_per_table: 4       # Worker threads per table
-    max_concurrent_events: 100 # Max concurrent events
+    max_concurrent_events: 1000 # Max concurrent events
     work_stealing: true        # Enable work stealing
-    work_steal_interval_ms: 50 # Work steal check interval
+    work_steal_interval_ms: 100 # Work steal check interval
+    work_steal_threshold: 50   # Min queue size difference
   
-  buffer_size: 10000           # Event buffer size
-  checkpoint_interval: 10      # Checkpoint save interval (seconds)
+  batch_processing:
+    default_batch_size: 100    # Default batch size
+    max_batch_size: 1000       # Maximum batch size
+    min_batch_size: 10         # Minimum batch size
+    batch_timeout_ms: 5000     # Batch timeout
+    adaptive_batching: true    # Dynamic batch sizing
+    
+    adaptive_config:
+      target_latency_ms: 1000  # Target processing time
+      adjustment_factor: 0.2   # Adjustment aggressiveness (0-1)
+      metric_window_size: 10   # Metrics to average
+      adjustment_interval_ms: 5000 # Min time between adjustments
+      memory_pressure_threshold: 80.0 # Memory % to reduce batch
+      per_table_optimization: true # Per-table batch sizing
+  
+  connection_pool:
+    max_connections: 20        # Max connections
+    min_connections: 5         # Min connections
+    connection_timeout: 30     # Timeout (seconds)
+    idle_timeout: 600          # Idle timeout (seconds)
 ```
 
 #### API Server Configuration
@@ -492,15 +576,55 @@ logging:
   level: info                  # Log level (trace/debug/info/warn/error)
   format: pretty               # Log format (pretty/json)
   
-metrics:
-  enabled: true                # Enable Prometheus metrics
-  port: 9090                  # Metrics port
-  path: /metrics              # Metrics endpoint
+monitoring:
+  metrics_enabled: true        # Enable Prometheus metrics
+  metrics_interval_seconds: 60 # Metrics collection interval
+  health_checks_enabled: true  # Enable health checks
+  health_check_interval_seconds: 30 # Health check interval
 
 features:
   auto_recovery: true         # Auto-recover from failures
   health_checks: true         # Enable health endpoints
+  metrics_export: true        # Export Prometheus metrics
   distributed_mode: false     # Enable distributed mode
+```
+
+#### At-Least-Once Delivery with Deduplication
+
+```yaml
+exactly_once_delivery:        # Name kept for backward compatibility
+  enabled: true               # Enable at-least-once delivery
+  deduplication_window: 10000 # Events to track for deduplication
+  transaction_timeout_secs: 30 # Transaction timeout
+  two_phase_commit: true      # Use two-phase commit protocol
+  checkpoint_before_write: true # Atomic checkpoint before write
+```
+
+#### Error Handling
+
+```yaml
+error_handling:
+  retry:
+    enabled: true
+    max_attempts: 3
+    initial_backoff_ms: 100
+    max_backoff_ms: 30000
+    backoff_multiplier: 2.0
+    jitter_factor: 0.1
+  
+  dead_letter_queue:
+    enabled: true
+    storage: memory           # memory or redis
+    max_entries_per_task: 10000
+    retention_hours: 24
+    auto_reprocess_interval_minutes: 0 # 0 = disabled
+  
+  circuit_breaker:
+    enabled: false            # Global circuit breaker
+    failure_threshold_percent: 50
+    min_requests: 10
+    reset_timeout_seconds: 60
+    half_open_max_requests: 3
 ```
 </details>
 
@@ -559,7 +683,7 @@ cargo build
 cargo test
 ```
 
-**Code of Conduct**: This project follows our [Code of Conduct](CODE_OF_CONDUCT.md).
+**Code of Conduct**: Please treat everyone with respect and kindness.
 
 ---
 

@@ -1,9 +1,13 @@
 # MeiliBridge Configuration Example
 # Copy this file to config.yaml and update with your settings
 
+# Application metadata
 app:
-  name: "MeiliBridge"
-  instance_id: "dev-01"
+  name: "MeiliBridge"           # Application name
+  instance_id: "dev-01"         # Unique instance identifier
+  tags:                         # Custom tags for identification
+    environment: "development"
+    region: "us-east-1"
 
 # Option 1: Single source configuration (backward compatible)
 # source:
@@ -11,13 +15,20 @@ app:
 #   host: "localhost"
 #   port: 5432
 #   database: "myapp"
-#   user: "postgres"
+#   username: "postgres"  # Note: 'username' not 'user'
 #   password: "${POSTGRES_PASSWORD}"
 #   pool:
 #     max_size: 10
-#     min_idle: 2
+#     min_idle: 1      # Default is 1, not 2
+#     connection_timeout: 30
+#     idle_timeout: 600
 #   slot_name: "meilibridge_slot"
 #   publication: "meilibridge_pub"
+#   ssl:
+#     mode: "disable"  # disable, prefer, require, verify-ca, verify-full
+#     ca_cert: "/path/to/ca.crt"
+#     client_cert: "/path/to/client.crt"
+#     client_key: "/path/to/client.key"
 #   statement_cache:
 #     enabled: true
 #     max_size: 100
@@ -29,11 +40,11 @@ sources:
     host: "localhost"
     port: 5432
     database: "myapp"
-    user: "postgres"
+    username: "postgres"  # Note: 'username' not 'user'
     password: "${POSTGRES_PASSWORD}"
     pool:
       max_size: 10
-      min_idle: 2
+      min_idle: 1      # Default is 1
     slot_name: "meilibridge_slot_primary"
     publication: "meilibridge_pub_primary"
     statement_cache:
@@ -45,7 +56,7 @@ sources:
     host: "secondary.example.com"
     port: 5432
     database: "analytics"
-    user: "postgres"
+    username: "postgres"  # Note: 'username' not 'user'
     password: "${SECONDARY_DB_PASSWORD}"
     pool:
       max_size: 5
@@ -60,12 +71,40 @@ meilisearch:
   url: "http://localhost:7700"
   api_key: "${MEILI_MASTER_KEY}"
   timeout: 30
-  primary_key: "id"  # Default primary key for all indexes
-  auto_create_index: true  # Auto-create missing indexes
+  max_connections: 10           # Connection pool size
+  batch_size: 1000              # Default batch size for operations
+  primary_key: "id"             # Default primary key for all indexes
+  auto_create_index: true       # Auto-create missing indexes
+  
+  # Index settings template (optional)
+  index_settings:
+    searchable_attributes: []   # Fields to search
+    displayed_attributes: []    # Fields to return in results
+    filterable_attributes: []   # Fields available for filtering
+    sortable_attributes: []     # Fields available for sorting
+    ranking_rules: []           # Custom ranking rules
+    stop_words: []              # Stop words list
+    synonyms: {}                # Synonyms mapping
+  
+  # Circuit breaker configuration
+  circuit_breaker:
+    enabled: true               # Enable circuit breaker protection
+    error_rate: 0.5             # Open circuit at 50% error rate
+    min_request_count: 10       # Minimum requests before evaluation
+    consecutive_failures: 5     # Or 5 consecutive failures
+    timeout_secs: 60            # Time before attempting recovery
 
 redis:
   url: "redis://localhost:6379"
-  key_prefix: "meilibridge"
+  password: "${REDIS_PASSWORD}"  # Optional
+  database: 0                    # Redis database number
+  key_prefix: "meilibridge"      # Prefix for all keys
+  
+  # Connection pool settings
+  pool:
+    max_size: 10                 # Maximum connections
+    min_idle: 2                  # Minimum idle connections
+    connection_timeout: 5        # Connection timeout (seconds)
 
 sync_tasks:
   # Sync from primary source
@@ -176,9 +215,15 @@ monitoring:
   health_check_interval_seconds: 30
 
 # At-least-once delivery configuration with deduplication
+# Note: Named 'exactly_once_delivery' for backward compatibility
 exactly_once_delivery:
   enabled: true                       # Enable at-least-once delivery with deduplication
   deduplication_window: 10000         # Number of events to track for deduplication
   transaction_timeout_secs: 30        # Timeout for two-phase commit transactions
   two_phase_commit: true              # Use two-phase commit protocol
   checkpoint_before_write: true       # Save checkpoint atomically before Meilisearch write
+
+# Plugin configuration (optional)
+plugins:
+  directory: "./plugins"              # Plugin directory path
+  enabled: []                         # List of enabled plugins

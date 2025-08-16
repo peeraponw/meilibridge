@@ -108,40 +108,62 @@ app:
 # PostgreSQL source configuration
 source:
   type: postgresql
-  postgresql:
-    host: "localhost"
-    port: 5432
-    database: "myapp"
-    user: "replication_user"
-    password: "${POSTGRES_PASSWORD}"
-    
-    # Connection pool settings
-    pool:
-      max_size: 10
-      min_idle: 2
-      acquire_timeout: 30
-      idle_timeout: 600
-      max_lifetime: 1800
-    
-    # Replication settings
-    replication:
-      slot_name: "meilibridge_slot"
-      publication_name: "meilibridge_pub"
-      create_slot: true
-      temporary_slot: false
-      start_lsn: null  # Optional: specify starting position
+  host: "localhost"
+  port: 5432
+  database: "myapp"
+  username: "replication_user"    # Note: 'username' not 'user'
+  password: "${POSTGRES_PASSWORD}"
+  
+  # Connection pool settings
+  pool:
+    max_size: 10
+    min_idle: 1                   # Default is 1
+    connection_timeout: 30        # Connection timeout (seconds)
+    idle_timeout: 600             # Idle connection timeout (seconds)
+  
+  # Replication settings
+  slot_name: "meilibridge_slot"   # Default: "meilibridge"
+  publication: "meilibridge_pub"  # Default: "meilibridge_pub"
+  
+  # SSL/TLS configuration
+  ssl:
+    mode: "disable"               # disable, prefer, require, verify-ca, verify-full
+    ca_cert: "/path/to/ca.crt"
+    client_cert: "/path/to/client.crt"
+    client_key: "/path/to/client.key"
+  
+  # Statement cache
+  statement_cache:
+    enabled: true                 # Enable prepared statement caching
+    max_size: 100                 # Maximum cached statements
 
 # Meilisearch destination configuration
 meilisearch:
   url: "http://localhost:7700"
   api_key: "${MEILI_MASTER_KEY}"
   timeout: 30
-  
-  # Optional settings
-  max_retries: 3
-  retry_on_timeout: true
+  max_connections: 10             # Connection pool size
+  batch_size: 1000                # Default batch size
   auto_create_index: true
-  primary_key: "id"  # Default primary key if not specified per task
+  primary_key: "id"               # Default primary key if not specified per task
+  
+  # Index settings template
+  index_settings:
+    searchable_attributes: []     # Fields to search
+    displayed_attributes: []      # Fields to return
+    filterable_attributes: []     # Fields for filtering
+    sortable_attributes: []       # Fields for sorting
+    ranking_rules: []             # Custom ranking rules
+    stop_words: []                # Stop words list
+    synonyms: {}                  # Synonyms mapping
+  
+  # Circuit breaker configuration
+  circuit_breaker:
+    enabled: true                 # Enable circuit breaker
+    error_rate: 0.5               # Open at 50% error rate
+    min_request_count: 10         # Min requests before evaluation
+    consecutive_failures: 5       # Or 5 consecutive failures
+    timeout_secs: 60              # Time before recovery attempt
 
 # Redis configuration for state management
 redis:
@@ -273,10 +295,41 @@ features:
 
 # Plugin configuration (optional)
 plugins:
-  directory: "./plugins"
-  enabled:
-    - "custom_transformer"
-    - "slack_notifier"
+  directory: "./plugins"          # Plugin directory path
+  enabled: []                     # List of enabled plugins
+
+# At-least-once delivery with deduplication
+# Note: Named 'exactly_once_delivery' for backward compatibility
+exactly_once_delivery:
+  enabled: true                   # Enable at-least-once delivery
+  deduplication_window: 10000     # Events to track for deduplication
+  transaction_timeout_secs: 30    # Transaction timeout
+  two_phase_commit: true          # Use two-phase commit protocol
+  checkpoint_before_write: true   # Atomic checkpoint before write
+
+# Error handling configuration
+error_handling:
+  retry:
+    enabled: true
+    max_attempts: 3
+    initial_backoff_ms: 100
+    max_backoff_ms: 30000
+    backoff_multiplier: 2.0
+    jitter_factor: 0.1
+  
+  dead_letter_queue:
+    enabled: true
+    storage: "memory"             # memory or redis
+    max_entries_per_task: 10000
+    retention_hours: 24
+    auto_reprocess_interval_minutes: 0  # 0 = disabled
+  
+  circuit_breaker:
+    enabled: false                # Global circuit breaker
+    failure_threshold_percent: 50
+    min_requests: 10
+    reset_timeout_seconds: 60
+    half_open_max_requests: 3
 ```
 
 ### Environment Variables
@@ -364,13 +417,13 @@ pub enum Position {
 
 #### PostgreSQL Pool
 ```yaml
-postgresql:
+source:
+  type: postgresql
   pool:
-    max_size: 20        # Maximum connections
-    min_idle: 5         # Minimum idle connections
-    acquire_timeout: 30 # Seconds to wait for connection
-    idle_timeout: 600   # Seconds before closing idle connection
-    max_lifetime: 1800  # Maximum connection lifetime in seconds
+    max_size: 20              # Maximum connections
+    min_idle: 5               # Minimum idle connections
+    connection_timeout: 30    # Seconds to wait for connection
+    idle_timeout: 600         # Seconds before closing idle connection
 ```
 
 #### Redis Pool
@@ -448,6 +501,27 @@ performance:
     work_stealing: true             # Enable work stealing between tables
     work_steal_interval_ms: 100     # Work stealing check interval
     work_steal_threshold: 50        # Minimum queue size difference for stealing
+  
+  batch_processing:
+    default_batch_size: 100         # Default batch size
+    max_batch_size: 1000            # Maximum batch size
+    min_batch_size: 10              # Minimum batch size
+    batch_timeout_ms: 5000          # Batch timeout
+    adaptive_batching: true         # Dynamic batch sizing
+    
+    adaptive_config:
+      target_latency_ms: 1000       # Target processing time
+      adjustment_factor: 0.2        # Adjustment aggressiveness (0-1)
+      metric_window_size: 10        # Metrics to average
+      adjustment_interval_ms: 5000  # Min time between adjustments
+      memory_pressure_threshold: 80.0  # Memory % to reduce batch
+      per_table_optimization: true  # Per-table batch sizing
+  
+  connection_pool:
+    max_connections: 20             # Max connections
+    min_connections: 5              # Min connections
+    connection_timeout: 30          # Timeout (seconds)
+    idle_timeout: 600               # Idle timeout (seconds)
 ```
 
 #### How It Works
@@ -513,31 +587,21 @@ performance:
 ```yaml
 api:
   auth:
+    enabled: true
     type: "bearer"
     tokens:
       - name: "admin"
         token: "${API_ADMIN_TOKEN}"
         role: "admin"
-        permissions: ["read", "write", "admin"]
-```
-
-#### JWT Authentication
-```yaml
-api:
-  auth:
-    type: "jwt"
-    secret: "${JWT_SECRET}"
-    algorithm: "HS256"
-    expiration: 3600
 ```
 
 ### TLS Configuration
 
 #### PostgreSQL TLS
 ```yaml
-postgresql:
+source:
+  type: postgresql
   ssl:
-    enabled: true
     mode: "require"  # disable, prefer, require, verify-ca, verify-full
     ca_cert: "/path/to/ca.crt"
     client_cert: "/path/to/client.crt"
