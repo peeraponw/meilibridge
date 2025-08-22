@@ -2,6 +2,7 @@ use crate::config::AdaptiveBatchingConfig;
 use crate::error::Result;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
 
@@ -47,18 +48,46 @@ impl TableBatchState {
 }
 
 #[derive(Clone)]
-struct MemoryMonitor {}
+struct MemoryMonitor {
+    #[allow(dead_code)]
+    threshold_percentage: f64,
+    system: Arc<RwLock<System>>,
+}
 
 impl MemoryMonitor {
-    fn new(_threshold_percentage: f64) -> Self {
-        // TODO: Get actual system memory and calculate threshold
-        Self {}
+    fn new(threshold_percentage: f64) -> Self {
+        let mut system = System::new_with_specifics(
+            RefreshKind::new().with_memory(MemoryRefreshKind::everything()),
+        );
+        system.refresh_memory();
+
+        Self {
+            threshold_percentage,
+            system: Arc::new(RwLock::new(system)),
+        }
     }
 
     async fn get_memory_pressure(&self) -> f64 {
-        // TODO: Implement actual memory monitoring
-        // For now, return a mock value
-        0.5 // 50% memory pressure
+        // Refresh memory information
+        let mut system = self.system.write().await;
+        system.refresh_memory();
+
+        let total_memory = system.total_memory();
+        let used_memory = system.used_memory();
+
+        if total_memory > 0 {
+            (used_memory as f64 / total_memory as f64) * 100.0
+        } else {
+            0.0
+        }
+    }
+
+    #[allow(dead_code)]
+    async fn get_available_memory_mb(&self) -> f64 {
+        let system = self.system.read().await;
+        let available_memory = system.available_memory();
+        // Convert from KB to MB
+        available_memory as f64 / 1024.0
     }
 }
 

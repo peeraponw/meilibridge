@@ -65,6 +65,22 @@ impl SourceAdapter for MockSourceAdapter {
             stream_created: self.stream_created.clone(),
         })
     }
+
+    async fn set_start_position(&mut self, _position: Position) -> Result<()> {
+        Ok(())
+    }
+
+    async fn pause(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn resume(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn is_paused(&self) -> bool {
+        false
+    }
 }
 
 fn create_test_cdc_event(table: &str, schema: &str) -> Event {
@@ -323,6 +339,22 @@ async fn test_coordinator_handles_adapter_errors() {
 
         fn clone_box(&self) -> Box<dyn SourceAdapter> {
             Box::new(ErrorAdapter)
+        }
+
+        async fn set_start_position(&mut self, _position: Position) -> Result<()> {
+            Ok(())
+        }
+
+        async fn pause(&mut self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn resume(&mut self) -> Result<()> {
+            Ok(())
+        }
+
+        fn is_paused(&self) -> bool {
+            false
         }
     }
 

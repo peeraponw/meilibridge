@@ -1,6 +1,5 @@
 use crate::config::{Config, SyncTaskConfig};
-use crate::destination::meilisearch::MeilisearchAdapter;
-use crate::error::Result;
+use crate::error::{MeiliBridgeError, Result};
 use tracing::{info, warn};
 
 /// Performs startup checks for the pipeline
@@ -87,11 +86,40 @@ impl StartupChecker {
     async fn check_meilisearch_connectivity(&self) -> Result<()> {
         info!("Checking Meilisearch connectivity...");
 
-        let _adapter = MeilisearchAdapter::new(self.config.meilisearch.clone());
-        // Note: MeilisearchAdapter doesn't have a connect method - connection is established on first use
-        // TODO: Implement actual connectivity check when MeilisearchAdapter provides the capability
+        use crate::destination::meilisearch::protected_client::ProtectedMeilisearchClient;
 
-        info!("✓ Successfully connected to Meilisearch");
+        // Create a protected client to test connectivity
+        let client = ProtectedMeilisearchClient::new(self.config.meilisearch.clone())?;
+
+        // Test the connection
+        match client.test_connection().await {
+            Ok(_) => {
+                info!("✓ Successfully connected to Meilisearch");
+
+                // Try to get version info for better diagnostics
+                match client.get_version().await {
+                    Ok(version) => {
+                        info!("  Meilisearch version: {}", version);
+                    }
+                    Err(e) => {
+                        warn!("  Could not retrieve Meilisearch version: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(MeiliBridgeError::Meilisearch(format!(
+                    "Failed to connect to Meilisearch at {}: {}",
+                    self.config.meilisearch.url, e
+                )));
+            }
+        }
+
+        // Validate API key permissions if configured
+        if self.config.meilisearch.api_key.is_some() {
+            info!("  API key configured - permissions will be validated on first use");
+        } else {
+            warn!("  No API key configured - ensure Meilisearch allows anonymous access");
+        }
 
         // For CDC-only tables with auto_create_index enabled,
         // we could pre-create indexes here, but it's better to let

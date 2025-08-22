@@ -38,6 +38,9 @@ Real-time data synchronization with automatic retries, parallel processing, and 
 - **🗑️ Soft Delete Handling** - Configurable detection and transformation of soft deletes
 - **📦 Dead Letter Queue** - Automatic handling of failed events with retry policies
 - **🔍 Snapshot Isolation** - Consistent reads during full table synchronization
+- **♻️ Checkpoint Management** - Automatic cleanup with retention policies and memory pressure triggers
+- **🔄 CDC Resume** - Seamless resume from saved checkpoints after restart
+- **⚡ Field Validation** - Automatic validation against PostgreSQL schema at startup
 
 ### Performance Optimization
 
@@ -46,6 +49,8 @@ Real-time data synchronization with automatic retries, parallel processing, and 
 - **💪 Connection Pooling** - Optimized connection management for high throughput
 - **🚦 Memory Efficient** - Streaming processing with bounded memory usage
 - **⏱️ Sub-100ms P50 Latency** - Optimized for real-time synchronization
+- **🎛️ Backpressure Control** - Automatic flow control with channel-based backpressure
+- **📊 Memory Monitoring** - Real-time system memory tracking with adaptive batch sizing
 
 ### Operations & Monitoring
 
@@ -55,6 +60,8 @@ Real-time data synchronization with automatic retries, parallel processing, and 
 - **📋 Event Replay** - Replay events from specific checkpoints for recovery
 - **🔍 Diagnostic Tools** - Built-in debugging and troubleshooting endpoints
 - **📚 Structured Logging** - JSON-formatted logs with correlation IDs
+- **🔄 Full Sync API** - Trigger full table synchronization via REST API
+- **🔌 Startup Validation** - Comprehensive connectivity checks for all components
 
 ---
 
@@ -327,6 +334,7 @@ Available metrics:
 - `GET /health` - Overall system health
 - `GET /health/liveness` - Kubernetes liveness probe
 - `GET /health/readiness` - Kubernetes readiness probe
+- `GET /health/:component` - Component-specific health (postgresql, meilisearch, redis)
 
 ### Grafana Dashboard
 
@@ -335,6 +343,40 @@ Import our [Grafana dashboard](monitoring/grafana-dashboard.json) for visualizin
 - Error rates and recovery metrics
 - Resource utilization
 - Sync task status
+
+### REST API Endpoints
+
+**Base URL**: `http://localhost:7701/api/v1`
+
+#### Sync Task Management
+- `GET /api/v1/tasks` - List all sync tasks
+- `GET /api/v1/tasks/:id` - Get sync task details
+- `POST /api/v1/tasks` - Create new sync task
+- `PUT /api/v1/tasks/:id` - Update sync task
+- `DELETE /api/v1/tasks/:id` - Delete sync task
+- `POST /api/v1/tasks/:id/pause` - Pause sync task
+- `POST /api/v1/tasks/:id/resume` - Resume sync task
+- `POST /api/v1/tasks/:id/full-sync` - Trigger full table sync
+- `GET /api/v1/tasks/:id/stats` - Get task statistics
+
+#### CDC Control
+- `POST /api/v1/cdc/pause` - Pause all CDC processing
+- `POST /api/v1/cdc/resume` - Resume all CDC processing
+- `GET /api/v1/cdc/status` - Get CDC status and replication info
+
+#### Dead Letter Queue
+- `GET /api/v1/dead-letters` - Get DLQ statistics
+- `POST /api/v1/dead-letters/:task_id/reprocess` - Reprocess failed events
+
+#### Cache Management
+- `GET /api/v1/cache/stats` - Get statement cache statistics
+- `POST /api/v1/cache/clear` - Clear statement cache
+
+#### Parallel Processing
+- `GET /api/v1/parallel/status` - Get parallel processing status
+- `GET /api/v1/parallel/queues` - Get queue sizes for all tables
+
+More info at [API Documentation](docs/api-development.md)
 
 ### Logging
 
@@ -559,6 +601,12 @@ redis:
     max_size: 10               # Maximum connections
     min_idle: 2                # Minimum idle connections
     connection_timeout: 5      # Connection timeout (seconds)
+  
+  # Checkpoint retention (New!)
+  checkpoint_retention:
+    max_checkpoints_per_task: 10  # Keep last 10 checkpoints per task
+    cleanup_on_memory_pressure: true  # Auto-cleanup when memory is high
+    memory_pressure_threshold: 80.0   # Trigger cleanup at 80% memory
 ```
 
 #### Performance Tuning

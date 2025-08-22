@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
         Some(Commands::Validate) => {
             info!("Validating configuration...");
             let config = load_config(cli.config.as_deref())?;
-            validate_config(&config)?;
+            validate_config(&config).await?;
             info!("Configuration is valid");
             return Ok(());
         }
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
             if dry_run {
                 info!("Running in dry-run mode");
                 let config = load_config(cli.config.as_deref())?;
-                validate_config(&config)?;
+                validate_config(&config).await?;
                 info!("Dry run completed successfully");
                 return Ok(());
             }
@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
     let config = load_config(cli.config.as_deref())?;
 
     // Validate configuration
-    validate_config(&config)?;
+    validate_config(&config).await?;
 
     // Start the service
     run_service(config).await
@@ -203,10 +203,15 @@ fn load_config(path: Option<&str>) -> Result<Config> {
     }
 }
 
-fn validate_config(config: &Config) -> Result<()> {
+async fn validate_config(config: &Config) -> Result<()> {
     // Use the ConfigValidator for comprehensive validation
     let validator = ConfigValidator::new(config.clone());
-    let report = validator.validate()?;
+    let mut report = validator.validate()?;
+
+    // Validate fields against actual PostgreSQL schema if connected
+    if let Err(e) = validator.validate_fields_against_schema(&mut report).await {
+        warn!("Could not validate fields against database schema: {}", e);
+    }
 
     // Print the validation report
     report.print();

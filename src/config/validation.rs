@@ -1,5 +1,7 @@
-use crate::config::{Config, SyncTaskConfig};
+use crate::config::{Condition, Config, FieldMapping, FieldTransform, SyncTaskConfig};
 use crate::error::Result;
+use crate::source::postgres::connection::PostgresConnector;
+use crate::source::postgres::full_sync::FullSyncHandler;
 use std::collections::HashSet;
 use tracing::{info, warn};
 
@@ -11,6 +13,27 @@ pub struct ConfigValidator {
 impl ConfigValidator {
     pub fn new(config: Config) -> Self {
         Self { config }
+    }
+
+    /// Collect all field names referenced in a condition
+    fn collect_fields_from_condition(condition: &Condition, fields: &mut HashSet<String>) {
+        match condition {
+            Condition::Equals { field, .. }
+            | Condition::NotEquals { field, .. }
+            | Condition::Contains { field, .. }
+            | Condition::GreaterThan { field, .. }
+            | Condition::LessThan { field, .. }
+            | Condition::In { field, .. }
+            | Condition::IsNull { field }
+            | Condition::IsNotNull { field } => {
+                fields.insert(field.clone());
+            }
+            Condition::And { conditions } | Condition::Or { conditions } => {
+                for cond in conditions {
+                    Self::collect_fields_from_condition(cond, fields);
+                }
+            }
+        }
     }
 
     /// Validate the entire configuration
@@ -99,11 +122,17 @@ impl ConfigValidator {
     ) -> Result<()> {
         // Check if filter conditions reference valid fields
         if let Some(conditions) = &filter.conditions {
-            for _condition in conditions {
-                // This is a basic check - in production, we'd validate against actual schema
-                // TODO: Add proper field validation against table schema
-                // For now, just check that conditions exist
+            // Collect all fields referenced in conditions
+            let mut referenced_fields = HashSet::new();
+            for condition in conditions {
+                Self::collect_fields_from_condition(condition, &mut referenced_fields);
             }
+
+            // Store fields for validation (will be validated in validate_fields_against_schema)
+            report.add_info(format!(
+                "Filter for table '{}' references fields: {:?}",
+                task.table, referenced_fields
+            ));
         }
 
         // Validate event types
@@ -252,6 +281,148 @@ impl ConfigValidator {
         if self.config.meilisearch.timeout == 0 {
             report.add_error("Meilisearch timeout must be greater than 0".to_string());
         }
+
+        Ok(())
+    }
+
+    /// Validate fields against actual PostgreSQL table schema
+    pub async fn validate_fields_against_schema(
+        &self,
+        report: &mut ValidationReport,
+    ) -> Result<()> {
+        // Only validate if we have a PostgreSQL source
+        let pg_config = match &self.config.source {
+            Some(crate::config::SourceConfig::PostgreSQL(config)) => config,
+            _ => return Ok(()), // Skip validation for non-PostgreSQL sources
+        };
+
+        // Create a connector to query schema
+        let mut connector = PostgresConnector::new((**pg_config).clone());
+        if let Err(e) = connector.connect().await {
+            report.add_warning(format!("Cannot validate fields against schema: {}", e));
+            return Ok(());
+        }
+
+        let full_sync_handler = FullSyncHandler::new(connector.clone());
+
+        // Validate each sync task
+        for task in &self.config.sync_tasks {
+            // Get table columns
+            match full_sync_handler.get_table_columns(&task.table).await {
+                Ok(columns) => {
+                    let column_set: HashSet<String> = columns.into_iter().collect();
+
+                    // Validate filter fields
+                    if let Some(filter) = &task.filter {
+                        if let Some(conditions) = &filter.conditions {
+                            let mut referenced_fields = HashSet::new();
+                            for condition in conditions {
+                                Self::collect_fields_from_condition(
+                                    condition,
+                                    &mut referenced_fields,
+                                );
+                            }
+
+                            // Check if all referenced fields exist
+                            for field in referenced_fields {
+                                if !column_set.contains(&field) {
+                                    report.add_error(format!(
+                                        "Table '{}': Filter references non-existent field '{}'",
+                                        task.table, field
+                                    ));
+                                }
+                            }
+                        }
+                    }
+
+                    // Validate mapping fields
+                    if let Some(mapping) = &task.mapping {
+                        if let Some(tables) = &mapping.tables.get(&task.table) {
+                            if let Some(fields) = &tables.fields {
+                                for (from_field, mapping_config) in fields {
+                                    // Validate source field
+                                    if !column_set.contains(from_field) {
+                                        report.add_error(format!(
+                                            "Table '{}': Mapping references non-existent source field '{}'",
+                                            task.table, from_field
+                                        ));
+                                    }
+
+                                    // Validate complex mapping sources
+                                    if let FieldMapping::Complex {
+                                        sources: Some(sources),
+                                        ..
+                                    } = mapping_config
+                                    {
+                                        for source in sources {
+                                            if !column_set.contains(source) {
+                                                report.add_error(format!(
+                                                    "Table '{}': Complex mapping references non-existent source field '{}'",
+                                                    task.table, source
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Validate transform fields
+                    if let Some(transform) = &task.transform {
+                        if let Some(table_transforms) = transform.fields.get(&task.table) {
+                            for field_transform in table_transforms.values() {
+                                match field_transform {
+                                    FieldTransform::Rename { from, .. } => {
+                                        if !column_set.contains(from) {
+                                            report.add_error(format!(
+                                                "Table '{}': Transform references non-existent field '{}'",
+                                                task.table, from
+                                            ));
+                                        }
+                                    }
+                                    FieldTransform::Convert { field, .. } => {
+                                        if !column_set.contains(field) {
+                                            report.add_error(format!(
+                                                "Table '{}': Transform references non-existent field '{}'",
+                                                task.table, field
+                                            ));
+                                        }
+                                    }
+                                    _ => {} // Other transforms don't reference fields
+                                }
+                            }
+                        }
+                    }
+
+                    // Validate soft delete field
+                    if let Some(soft_delete) = &task.soft_delete {
+                        if !column_set.contains(&soft_delete.field) {
+                            report.add_error(format!(
+                                "Table '{}': Soft delete references non-existent field '{}'",
+                                task.table, soft_delete.field
+                            ));
+                        }
+                    }
+
+                    report.add_info(format!(
+                        "Table '{}' has {} columns: {:?}",
+                        task.table,
+                        column_set.len(),
+                        column_set
+                    ));
+                }
+                Err(e) => {
+                    report.add_warning(format!(
+                        "Cannot validate fields for table '{}': {}",
+                        task.table, e
+                    ));
+                }
+            }
+        }
+
+        // Disconnect
+        connector.disconnect().await;
 
         Ok(())
     }

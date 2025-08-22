@@ -1,6 +1,9 @@
 use crate::metrics;
 use crate::models::stream_event::Event;
-use crate::pipeline::{filter::EventFilter, mapper::FieldMapper, transformer::EventTransformer};
+use crate::pipeline::{
+    filter::EventFilter, mapper::FieldMapper, soft_delete::SoftDeleteHandler,
+    transformer::EventTransformer,
+};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 use tokio::time::{interval, Duration};
@@ -39,6 +42,7 @@ struct WorkerParams {
     filter: Option<EventFilter>,
     transformer: Option<EventTransformer>,
     mapper: Option<FieldMapper>,
+    soft_delete_handler: Option<SoftDeleteHandler>,
     destination_tx: mpsc::Sender<Vec<Event>>,
 }
 
@@ -73,6 +77,7 @@ impl ParallelTableProcessor {
         filter: Option<EventFilter>,
         transformer: Option<EventTransformer>,
         mapper: Option<FieldMapper>,
+        soft_delete_handler: Option<SoftDeleteHandler>,
         destination_tx: mpsc::Sender<Vec<Event>>,
         shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) {
@@ -88,6 +93,7 @@ impl ParallelTableProcessor {
             let filter = filter.clone();
             let transformer = transformer.clone();
             let mapper = mapper.clone();
+            let soft_delete_handler = soft_delete_handler.clone();
             let destination_tx = destination_tx.clone();
             let mut shutdown_rx = shutdown_rx.clone();
 
@@ -100,6 +106,7 @@ impl ParallelTableProcessor {
                     filter,
                     transformer,
                     mapper,
+                    soft_delete_handler,
                     destination_tx,
                 };
                 Self::worker_loop(params, &mut shutdown_rx).await;
@@ -191,6 +198,7 @@ impl ParallelTableProcessor {
                                 &params.filter,
                                 &params.transformer,
                                 &params.mapper,
+                                &params.soft_delete_handler,
                             ).await {
                                 processed_events.push(processed);
                                 processed_count += 1;
@@ -241,6 +249,7 @@ impl ParallelTableProcessor {
         filter: &Option<EventFilter>,
         transformer: &Option<EventTransformer>,
         mapper: &Option<FieldMapper>,
+        soft_delete_handler: &Option<SoftDeleteHandler>,
     ) -> Option<Event> {
         // Apply filter
         if let Some(f) = filter {
@@ -255,6 +264,14 @@ impl ParallelTableProcessor {
         }
 
         let mut current_event = event;
+
+        // Apply soft delete handler
+        if let Some(sdh) = soft_delete_handler {
+            match sdh.transform_event(current_event) {
+                Some(transformed) => current_event = transformed,
+                None => return None, // Soft-deleted record filtered out
+            }
+        }
 
         // Apply transformer
         if let Some(t) = transformer {

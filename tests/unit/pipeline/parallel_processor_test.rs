@@ -96,7 +96,7 @@ async fn test_parallel_processing_basic() {
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // Start workers
-    processor.start_workers(None, None, None, tx, shutdown_rx);
+    processor.start_workers(None, None, None, None, tx, shutdown_rx);
 
     // Add events
     let events: Vec<Event> = (1..=5).map(|i| create_test_event("users", i)).collect();
@@ -143,7 +143,7 @@ async fn test_parallel_processing_with_filter() {
     let filter = EventFilter::new(filter_config);
 
     // Start workers with filter
-    processor.start_workers(Some(filter), None, None, tx, shutdown_rx);
+    processor.start_workers(Some(filter), None, None, None, tx, shutdown_rx);
 
     // Add events
     let events: Vec<Event> = (1..=5).map(|i| create_test_event("users", i)).collect();
@@ -303,7 +303,7 @@ async fn test_parallel_processing_with_transformer() {
     let transformer = EventTransformer::new(transform_config);
 
     // Start workers with transformer
-    processor.start_workers(None, Some(transformer), None, tx, shutdown_rx);
+    processor.start_workers(None, Some(transformer), None, None, tx, shutdown_rx);
 
     // Add events
     let events: Vec<Event> = (1..=3).map(|i| create_test_event("users", i)).collect();
@@ -339,7 +339,7 @@ async fn test_multiple_workers_concurrent_processing() {
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // Start workers
-    processor.start_workers(None, None, None, tx, shutdown_rx);
+    processor.start_workers(None, None, None, None, tx, shutdown_rx);
 
     // Add many events
     let events: Vec<Event> = (1..=100).map(|i| create_test_event("users", i)).collect();

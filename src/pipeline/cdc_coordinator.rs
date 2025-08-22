@@ -134,8 +134,28 @@ impl CdcCoordinator {
         // Send to the specific task
         if let Some(tx) = self.task_channels.get(&table_name) {
             debug!("Sending event to task for table '{}'", table_name);
-            if tx.send(Ok(event.clone())).await.is_err() {
-                warn!("Failed to send event to task for table '{}'", table_name);
+
+            // Try to send without blocking first
+            match tx.try_send(Ok(event.clone())) {
+                Ok(()) => {
+                    // Sent successfully without blocking
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    // Channel is full - activate backpressure
+                    warn!(
+                        "Channel full for table '{}', activating backpressure",
+                        table_name
+                    );
+                    self.pause_table(&table_name).await;
+
+                    // Now do a blocking send
+                    if tx.send(Ok(event.clone())).await.is_err() {
+                        warn!("Failed to send event to task for table '{}'", table_name);
+                    }
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    warn!("Channel closed for table '{}'", table_name);
+                }
             }
         } else {
             debug!("No task registered for table '{}'", table_name);
@@ -149,8 +169,27 @@ impl CdcCoordinator {
                     "Sending event to task for table '{}' (without schema)",
                     table_only
                 );
-                if tx.send(Ok(event)).await.is_err() {
-                    warn!("Failed to send event to task for table '{}'", table_only);
+                // Try to send without blocking first
+                match tx.try_send(Ok(event)) {
+                    Ok(()) => {
+                        // Sent successfully without blocking
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(msg)) => {
+                        // Channel is full - activate backpressure
+                        warn!(
+                            "Channel full for table '{}' (without schema), activating backpressure",
+                            table_only
+                        );
+                        self.pause_table(table_only).await;
+
+                        // Now do a blocking send
+                        if tx.send(msg).await.is_err() {
+                            warn!("Failed to send event to task for table '{}'", table_only);
+                        }
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                        warn!("Channel closed for table '{}'", table_only);
+                    }
                 }
             }
         }

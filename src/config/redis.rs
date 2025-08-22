@@ -20,6 +20,35 @@ pub struct RedisConfig {
     /// Connection pool settings
     #[serde(default)]
     pub pool: RedisPoolConfig,
+
+    /// Checkpoint retention settings
+    #[serde(default)]
+    pub checkpoint_retention: CheckpointRetentionConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CheckpointRetentionConfig {
+    /// Maximum number of checkpoints to keep per task
+    #[serde(default = "default_max_checkpoints_per_task")]
+    pub max_checkpoints_per_task: usize,
+
+    /// Enable automatic cleanup on memory pressure
+    #[serde(default = "default_cleanup_on_memory_pressure")]
+    pub cleanup_on_memory_pressure: bool,
+
+    /// Memory pressure threshold to trigger cleanup (percentage)
+    #[serde(default = "default_memory_pressure_threshold")]
+    pub memory_pressure_threshold: f64,
+}
+
+impl Default for CheckpointRetentionConfig {
+    fn default() -> Self {
+        Self {
+            max_checkpoints_per_task: default_max_checkpoints_per_task(),
+            cleanup_on_memory_pressure: default_cleanup_on_memory_pressure(),
+            memory_pressure_threshold: default_memory_pressure_threshold(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -55,4 +84,13 @@ fn default_redis_min_idle() -> u32 {
 }
 fn default_redis_timeout() -> u64 {
     5
+}
+fn default_max_checkpoints_per_task() -> usize {
+    10
+}
+fn default_cleanup_on_memory_pressure() -> bool {
+    true
+}
+fn default_memory_pressure_threshold() -> f64 {
+    80.0
 }

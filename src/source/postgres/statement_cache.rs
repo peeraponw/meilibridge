@@ -129,6 +129,11 @@ impl StatementCache {
     pub async fn contains(&self, query: &str) -> bool {
         self.cache.read().await.contains_key(query)
     }
+
+    /// Get the maximum cache size configuration
+    pub fn max_size(&self) -> usize {
+        self.config.max_size
+    }
 }
 
 /// Statistics for the statement cache

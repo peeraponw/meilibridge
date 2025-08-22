@@ -25,11 +25,23 @@ pub trait SourceAdapter: Send + Sync {
     /// Get the current replication position
     async fn get_current_position(&self) -> Result<Position>;
 
+    /// Set the starting position for CDC
+    async fn set_start_position(&mut self, position: Position) -> Result<()>;
+
     /// Acknowledge events up to the given position
     async fn acknowledge(&mut self, position: Position) -> Result<()>;
 
     /// Check if the adapter is connected
     fn is_connected(&self) -> bool;
+
+    /// Pause CDC consumption
+    async fn pause(&mut self) -> Result<()>;
+
+    /// Resume CDC consumption
+    async fn resume(&mut self) -> Result<()>;
+
+    /// Check if CDC is paused
+    fn is_paused(&self) -> bool;
 
     /// Disconnect from the source
     async fn disconnect(&mut self) -> Result<()>;

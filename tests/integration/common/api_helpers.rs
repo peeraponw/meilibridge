@@ -161,7 +161,7 @@ pub mod assertions {
         response
     }
 
-    pub async fn assert_json_field(response: Response, field: &str, expected: &Value) -> Response {
+    pub async fn assert_json_field(response: Response, field: &str, expected: &Value) -> Value {
         let json: Value = response
             .json()
             .await
@@ -174,9 +174,8 @@ pub mod assertions {
             "Field '{}' expected to be {:?} but was {:?}",
             field, expected, actual
         );
-        // Return a mock response since we can't reconstruct a reqwest::Response
-        // In real usage, this function would be used differently
-        todo!("Cannot reconstruct reqwest::Response from JSON")
+        // Return the parsed JSON for further assertions
+        json
     }
 
     pub async fn get_json(response: Response) -> Value {

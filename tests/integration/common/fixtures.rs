@@ -91,6 +91,7 @@ pub fn create_test_redis_config(url: &str) -> RedisConfig {
         database: 0,
         key_prefix: "test_".to_string(),
         pool: Default::default(),
+        checkpoint_retention: Default::default(),
     }
 }
 

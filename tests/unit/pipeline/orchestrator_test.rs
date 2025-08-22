@@ -34,6 +34,7 @@ async fn test_orchestrator_creation_no_sources() {
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
+            checkpoint_retention: Default::default(),
         },
         sync_tasks: vec![],
         api: Default::default(),
@@ -87,6 +88,7 @@ async fn test_orchestrator_creation_with_single_source() {
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
+            checkpoint_retention: Default::default(),
         },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
@@ -172,6 +174,7 @@ async fn test_orchestrator_with_multiple_sources() {
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
+            checkpoint_retention: Default::default(),
         },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
@@ -242,6 +245,7 @@ async fn test_orchestrator_with_filters() {
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
+            checkpoint_retention: Default::default(),
         },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
@@ -322,6 +326,7 @@ async fn test_orchestrator_with_soft_delete() {
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
+            checkpoint_retention: Default::default(),
         },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
@@ -400,6 +405,7 @@ async fn test_dlq_operations() {
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
+            checkpoint_retention: Default::default(),
         },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),

@@ -128,6 +128,81 @@ impl CheckpointManager {
         }
     }
 
+    /// Clean up old checkpoints based on retention policy
+    pub async fn cleanup_checkpoints(
+        &self,
+        active_task_ids: Vec<String>,
+        max_checkpoints_per_task: usize,
+    ) -> Result<()> {
+        info!("Starting checkpoint cleanup");
+
+        // Get all checkpoints
+        let checkpoints = self.list_checkpoints().await?;
+
+        // Group checkpoints by task
+        let mut checkpoints_by_task: std::collections::HashMap<String, Vec<Checkpoint>> =
+            std::collections::HashMap::new();
+
+        for checkpoint in checkpoints {
+            checkpoints_by_task
+                .entry(checkpoint.task_id.clone())
+                .or_default()
+                .push(checkpoint);
+        }
+
+        let mut removed_count = 0;
+
+        // Clean up orphaned checkpoints (tasks that no longer exist)
+        for (task_id, checkpoints) in &checkpoints_by_task {
+            if !active_task_ids.contains(task_id) {
+                info!(
+                    "Removing {} orphaned checkpoints for inactive task '{}'",
+                    checkpoints.len(),
+                    task_id
+                );
+                for _ in checkpoints {
+                    if let Err(e) = self.delete_checkpoint(task_id).await {
+                        warn!("Failed to delete checkpoint for task '{}': {}", task_id, e);
+                    } else {
+                        removed_count += 1;
+                    }
+                }
+            }
+        }
+
+        // Keep only the most recent N checkpoints per active task
+        for task_id in &active_task_ids {
+            if let Some(checkpoints) = checkpoints_by_task.get_mut(task_id) {
+                // Sort by creation time (newest first)
+                checkpoints.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+                // Remove old checkpoints beyond the limit
+                if checkpoints.len() > max_checkpoints_per_task {
+                    let to_remove = checkpoints.split_off(max_checkpoints_per_task);
+                    info!(
+                        "Removing {} old checkpoints for task '{}'",
+                        to_remove.len(),
+                        task_id
+                    );
+
+                    for checkpoint in to_remove {
+                        if let Err(e) = self.delete_checkpoint(&checkpoint.task_id).await {
+                            warn!("Failed to delete old checkpoint: {}", e);
+                        } else {
+                            removed_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        info!(
+            "Checkpoint cleanup completed. Removed {} checkpoints",
+            removed_count
+        );
+        Ok(())
+    }
+
     /// Load a checkpoint
     pub async fn load_checkpoint(&self, task_id: &str) -> Result<Option<Checkpoint>> {
         if let Some(tx) = &self.command_tx {

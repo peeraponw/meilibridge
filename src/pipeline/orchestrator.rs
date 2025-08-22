@@ -12,7 +12,8 @@ use crate::models::{stream_event::Event, Position};
 use crate::models::{EventId, EventMetadata, EventSource};
 use crate::pipeline::{
     filter::EventFilter, mapper::FieldMapper, soft_delete::SoftDeleteHandler,
-    transformer::EventTransformer, CdcCoordinator, ParallelTableProcessor, WorkStealingCoordinator,
+    transformer::EventTransformer, BackpressureConfig, BackpressureEvent, BackpressureManager,
+    CdcCoordinator, ParallelTableProcessor, WorkStealingCoordinator,
 };
 use crate::pipeline::{AdaptiveBatchingManager, MemoryMonitor};
 use crate::source::adapter::SourceAdapter;
@@ -275,6 +276,8 @@ pub struct PipelineOrchestrator {
     adaptive_batching_manager: Option<Arc<AdaptiveBatchingManager>>,
     // Memory monitoring
     memory_monitor: Option<Arc<MemoryMonitor>>,
+    // Backpressure management
+    backpressure_manager: Option<Arc<BackpressureManager>>,
 }
 
 impl PipelineOrchestrator {
@@ -354,6 +357,7 @@ impl PipelineOrchestrator {
             transactional_checkpoint: None,
             adaptive_batching_manager: None,
             memory_monitor: None,
+            backpressure_manager: None,
         })
     }
 
@@ -474,17 +478,49 @@ impl PipelineOrchestrator {
             self.memory_monitor = Some(monitor_arc.clone());
 
             // Handle memory pressure events
+            let checkpoint_retention_config = self.config.redis.checkpoint_retention.clone();
+            let active_task_ids: Vec<String> = self
+                .config
+                .sync_tasks
+                .iter()
+                .map(|task| task.id.clone())
+                .collect();
+            let checkpoint_manager_ref = self.checkpoint_manager.clone();
+
             let handle = tokio::spawn(async move {
                 let mut rx = memory_pressure_rx;
                 while let Some(event) = rx.recv().await {
                     match event {
                         crate::pipeline::MemoryPressureEvent::HighQueueMemory(percent) => {
                             tracing::warn!("High queue memory usage: {:.1}%", percent);
-                            // TODO: Implement backpressure
+
+                            // The backpressure manager will handle pausing/resuming sources
+                            // based on individual channel metrics
                         }
                         crate::pipeline::MemoryPressureEvent::HighCheckpointMemory(percent) => {
                             tracing::warn!("High checkpoint memory usage: {:.1}%", percent);
-                            // TODO: Implement checkpoint cleanup
+
+                            // Trigger checkpoint cleanup if enabled
+                            if checkpoint_retention_config.cleanup_on_memory_pressure
+                                && percent >= checkpoint_retention_config.memory_pressure_threshold
+                            {
+                                tracing::info!(
+                                    "Triggering checkpoint cleanup due to memory pressure"
+                                );
+
+                                // Trigger cleanup
+                                if let Some(checkpoint_manager) = &checkpoint_manager_ref {
+                                    if let Err(e) = checkpoint_manager
+                                        .cleanup_checkpoints(
+                                            active_task_ids.clone(),
+                                            checkpoint_retention_config.max_checkpoints_per_task,
+                                        )
+                                        .await
+                                    {
+                                        tracing::error!("Failed to cleanup checkpoints: {}", e);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -546,6 +582,47 @@ impl PipelineOrchestrator {
             // Ensure the cloned adapter is connected
             cdc_adapter.connect().await?;
 
+            // Load checkpoints for all tasks and find the earliest position
+            let mut earliest_position: Option<Position> = None;
+            if let Some(ref checkpoint_manager) = self.checkpoint_manager {
+                for task in &tasks {
+                    match checkpoint_manager.load_checkpoint(&task.id).await {
+                        Ok(Some(checkpoint)) => {
+                            info!(
+                                "Loaded checkpoint for task '{}' at position {:?}",
+                                task.id, checkpoint.position
+                            );
+                            // Update in-memory checkpoint
+                            let mut checkpoints_map = self.checkpoints.write().await;
+                            checkpoints_map.insert(task.id.clone(), checkpoint.position.clone());
+
+                            // Track the earliest position for this source
+                            match &earliest_position {
+                                None => earliest_position = Some(checkpoint.position),
+                                Some(current) => {
+                                    // For PostgreSQL, compare LSNs to find the earlier one
+                                    if !checkpoint.position.is_after(current) {
+                                        earliest_position = Some(checkpoint.position);
+                                    }
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            info!("No checkpoint found for task '{}', starting fresh", task.id);
+                        }
+                        Err(e) => {
+                            warn!("Failed to load checkpoint for task '{}': {}", task.id, e);
+                        }
+                    }
+                }
+
+                // Set the start position on the CDC adapter if we have one
+                if let Some(position) = earliest_position {
+                    info!("Setting CDC start position to: {:?}", position);
+                    cdc_adapter.set_start_position(position).await?;
+                }
+            }
+
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
             let mut cdc_coordinator = CdcCoordinator::new(cdc_adapter, shutdown_rx);
 
@@ -587,6 +664,59 @@ impl PipelineOrchestrator {
             self.cdc_coordinator = Some(primary_coordinator.clone());
         }
 
+        // Create backpressure manager
+        let mut backpressure_manager = BackpressureManager::new(BackpressureConfig {
+            high_watermark: 80.0,
+            low_watermark: 60.0,
+            check_interval_ms: 100,
+            channel_capacity: 1000,
+        });
+
+        // Register all tables for monitoring
+        for task in &self.config.sync_tasks {
+            backpressure_manager.register_table(&task.table).await;
+        }
+
+        let backpressure_rx = backpressure_manager.start_monitoring();
+        self.backpressure_manager = Some(Arc::new(backpressure_manager));
+
+        // Handle backpressure events
+        let cdc_coordinators_ref = cdc_coordinators.clone();
+        let handle = tokio::spawn(async move {
+            let mut rx = backpressure_rx;
+            while let Some(event) = rx.recv().await {
+                match event {
+                    BackpressureEvent::PauseSource(table) => {
+                        info!("Backpressure: Pausing table '{}'", table);
+                        // Find which source has this table
+                        for coordinator in cdc_coordinators_ref.values() {
+                            coordinator.read().await.pause_table(&table).await;
+                        }
+                    }
+                    BackpressureEvent::ResumeSource(table) => {
+                        info!("Backpressure: Resuming table '{}'", table);
+                        // Find which source has this table
+                        for coordinator in cdc_coordinators_ref.values() {
+                            coordinator.read().await.resume_table(&table).await;
+                        }
+                    }
+                    BackpressureEvent::PauseAll => {
+                        warn!("Backpressure: Pausing all sources");
+                        for coordinator in cdc_coordinators_ref.values() {
+                            coordinator.read().await.pause_all().await;
+                        }
+                    }
+                    BackpressureEvent::ResumeAll => {
+                        info!("Backpressure: Resuming all sources");
+                        for coordinator in cdc_coordinators_ref.values() {
+                            coordinator.read().await.resume_all().await;
+                        }
+                    }
+                }
+            }
+        });
+        self.task_handles.push(handle);
+
         // Initialize work stealing coordinator if enabled
         if self.config.performance.parallel_processing.enabled
             && self.config.performance.parallel_processing.work_stealing
@@ -626,6 +756,51 @@ impl PipelineOrchestrator {
 
         // Start checkpoint persistence task
         self.start_checkpoint_task().await?;
+
+        // Start periodic checkpoint cleanup task
+        if let Some(checkpoint_manager) = &self.checkpoint_manager {
+            let checkpoint_manager_ref = checkpoint_manager.clone();
+            let active_task_ids: Vec<String> = self
+                .config
+                .sync_tasks
+                .iter()
+                .map(|task| task.id.clone())
+                .collect();
+            let max_checkpoints = self
+                .config
+                .redis
+                .checkpoint_retention
+                .max_checkpoints_per_task;
+            let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
+
+            let handle = tokio::spawn(async move {
+                let mut shutdown_rx = shutdown_rx;
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Run every hour
+
+                loop {
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            info!("Running periodic checkpoint cleanup");
+                            if let Err(e) = checkpoint_manager_ref.cleanup_checkpoints(
+                                active_task_ids.clone(),
+                                max_checkpoints,
+                            ).await {
+                                error!("Periodic checkpoint cleanup failed: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.changed() => {
+                            if *shutdown_rx.borrow() {
+                                info!("Stopping periodic checkpoint cleanup task");
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+
+            self.task_handles.push(handle);
+            info!("Started periodic checkpoint cleanup task");
+        }
 
         info!("Pipeline orchestrator started successfully");
         Ok(())
@@ -816,27 +991,8 @@ impl PipelineOrchestrator {
             task.table
         );
 
-        // Load checkpoint if available
-        if let Some(ref checkpoint_manager) = self.checkpoint_manager {
-            match checkpoint_manager.load_checkpoint(&task.id).await {
-                Ok(Some(checkpoint)) => {
-                    info!(
-                        "Loaded checkpoint for task '{}' at position {:?}",
-                        task.id, checkpoint.position
-                    );
-                    // Update in-memory checkpoint
-                    let mut checkpoints_map = self.checkpoints.write().await;
-                    checkpoints_map.insert(task.id.clone(), checkpoint.position);
-                    // TODO: Configure CDC to start from this position
-                }
-                Ok(None) => {
-                    info!("No checkpoint found for task '{}', starting fresh", task.id);
-                }
-                Err(e) => {
-                    warn!("Failed to load checkpoint for task '{}': {}", task.id, e);
-                }
-            }
-        }
+        // Checkpoint loading is now handled in start_sync() before CDC coordinator creation
+        // This ensures CDC starts from the correct position
 
         // Perform initial full sync if configured
         if task.full_sync_on_start.unwrap_or(false) {
@@ -916,11 +1072,17 @@ impl PipelineOrchestrator {
             let filter = self.filters.get(&task.table).cloned();
             let transformer = self.transformers.get(&task.table).cloned();
             let mapper = self.mappers.get(&task.table).cloned();
-            // TODO: Add soft delete support to parallel processor
-            let _soft_delete_handler = self.soft_delete_handlers.get(&task.table).cloned();
+            let soft_delete_handler = self.soft_delete_handlers.get(&task.table).cloned();
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
 
-            processor.start_workers(filter, transformer, mapper, processed_tx, shutdown_rx);
+            processor.start_workers(
+                filter,
+                transformer,
+                mapper,
+                soft_delete_handler,
+                processed_tx,
+                shutdown_rx,
+            );
 
             // Store processor for work stealing
             let processor_arc = Arc::new(processor);
@@ -1830,6 +1992,49 @@ impl PipelineOrchestrator {
             Err(MeiliBridgeError::Pipeline(
                 "CDC coordinator not initialized".to_string(),
             ))
+        }
+    }
+
+    /// Trigger full sync for a specific task
+    pub async fn trigger_full_sync(&mut self, task_id: &str) -> Result<()> {
+        // Find the task configuration
+        let task = self
+            .config
+            .sync_tasks
+            .iter()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| MeiliBridgeError::NotFound(format!("Task '{}' not found", task_id)))?
+            .clone();
+
+        info!("Triggering full sync for task '{}'", task_id);
+
+        // Pause CDC for this table during full sync
+        if let Some(coordinator) = &self.cdc_coordinator {
+            coordinator.read().await.pause_table(&task.table).await;
+        }
+
+        // Perform the full sync
+        match self.perform_full_sync(&task).await {
+            Ok(_) => {
+                info!("Full sync completed successfully for task '{}'", task_id);
+
+                // Resume CDC for this table
+                if let Some(coordinator) = &self.cdc_coordinator {
+                    coordinator.read().await.resume_table(&task.table).await;
+                }
+
+                Ok(())
+            }
+            Err(e) => {
+                error!("Full sync failed for task '{}': {}", task_id, e);
+
+                // Resume CDC even if full sync failed
+                if let Some(coordinator) = &self.cdc_coordinator {
+                    coordinator.read().await.resume_table(&task.table).await;
+                }
+
+                Err(e)
+            }
         }
     }
 

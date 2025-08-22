@@ -38,7 +38,7 @@ pub async fn get_cache_stats(
             evictions: stats.evictions,
             hit_rate: stats.hit_rate,
             enabled: true,
-            max_size: 100, // TODO: Get this from config
+            max_size: cache.max_size(),
         };
 
         // Note: This shows stats for the API's cache instance only.

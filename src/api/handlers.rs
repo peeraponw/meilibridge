@@ -178,11 +178,16 @@ pub async fn resume_task(
 
 /// Trigger full sync for a task
 pub async fn full_sync_task(
-    State(_state): State<ApiState>,
+    State(state): State<ApiState>,
     Path(task_id): Path<String>,
 ) -> Result<StatusCode, MeiliBridgeError> {
-    // TODO: Implement full sync trigger through orchestrator
-    info!("Triggered full sync for task '{}'", task_id);
+    info!("Triggering full sync for task '{}'", task_id);
+
+    // Get a write lock on the orchestrator to call the mutable method
+    let mut orchestrator = state.orchestrator.write().await;
+
+    // Trigger the full sync
+    orchestrator.trigger_full_sync(&task_id).await?;
 
     Ok(StatusCode::ACCEPTED)
 }

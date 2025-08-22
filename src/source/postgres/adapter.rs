@@ -16,6 +16,7 @@ pub struct PostgresAdapter {
     replication_consumer: Option<ReplicationConsumer>,
     replication_handle: Option<tokio::task::JoinHandle<()>>,
     last_lsn: Option<PgLsn>,
+    is_paused: bool,
 }
 
 impl PostgresAdapter {
@@ -31,6 +32,7 @@ impl PostgresAdapter {
             replication_consumer: None,
             replication_handle: None,
             last_lsn: None,
+            is_paused: false,
         }
     }
 
@@ -133,6 +135,24 @@ impl SourceAdapter for PostgresAdapter {
         Ok(Position::postgresql(lsn))
     }
 
+    async fn set_start_position(&mut self, position: Position) -> Result<()> {
+        match position {
+            Position::PostgreSQL { lsn } => {
+                // Parse LSN
+                let pg_lsn: PgLsn = lsn
+                    .parse()
+                    .map_err(|_| MeiliBridgeError::Source(format!("Invalid LSN: {}", lsn)))?;
+
+                self.last_lsn = Some(pg_lsn);
+                debug!("Set start position to: {}", lsn);
+                Ok(())
+            }
+            _ => Err(MeiliBridgeError::Source(
+                "Invalid position type for PostgreSQL".to_string(),
+            )),
+        }
+    }
+
     async fn acknowledge(&mut self, position: Position) -> Result<()> {
         match position {
             Position::PostgreSQL { lsn } => {
@@ -153,6 +173,22 @@ impl SourceAdapter for PostgresAdapter {
 
     fn is_connected(&self) -> bool {
         self.connector.is_connected()
+    }
+
+    async fn pause(&mut self) -> Result<()> {
+        self.is_paused = true;
+        debug!("PostgreSQL adapter paused");
+        Ok(())
+    }
+
+    async fn resume(&mut self) -> Result<()> {
+        self.is_paused = false;
+        debug!("PostgreSQL adapter resumed");
+        Ok(())
+    }
+
+    fn is_paused(&self) -> bool {
+        self.is_paused
     }
 
     async fn disconnect(&mut self) -> Result<()> {

@@ -48,6 +48,9 @@ byteorder = "1.5"
 # Redis
 redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
 
+# System monitoring
+sysinfo = "0.30"
+
 # Meilisearch
 meilisearch-sdk = "0.26"
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }

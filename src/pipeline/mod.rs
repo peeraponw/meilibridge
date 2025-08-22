@@ -1,4 +1,5 @@
 pub mod adaptive_batching;
+pub mod backpressure;
 pub mod cdc_coordinator;
 pub mod exactly_once_helpers;
 pub mod filter;
@@ -12,6 +13,7 @@ pub mod streaming_processor;
 pub mod transformer;
 
 pub use adaptive_batching::{AdaptiveBatchingManager, BatchMetrics};
+pub use backpressure::{BackpressureConfig, BackpressureEvent, BackpressureManager};
 pub use cdc_coordinator::CdcCoordinator;
 pub use memory_monitor::{MemoryMonitor, MemoryPressureEvent, MemoryStats};
 pub use orchestrator::PipelineOrchestrator;

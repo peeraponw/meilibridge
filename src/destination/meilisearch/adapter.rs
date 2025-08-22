@@ -295,11 +295,19 @@ impl DestinationAdapter for MeilisearchAdapter {
                             chunk.len() as f64 * 1000.0
                         };
 
+                        // Estimate memory usage by serializing the batch
+                        let memory_usage_mb = if let Ok(serialized) = serde_json::to_vec(&chunk) {
+                            serialized.len() as f64 / (1024.0 * 1024.0)
+                        } else {
+                            // Fallback estimation: assume average 1KB per document
+                            chunk.len() as f64 / 1024.0
+                        };
+
                         let metrics = BatchMetrics {
                             batch_size: chunk.len(),
                             processing_time_ms,
                             documents_per_second: docs_per_second,
-                            memory_usage_mb: 0.0, // TODO: Implement memory tracking
+                            memory_usage_mb,
                             timestamp: start_time,
                         };
 
