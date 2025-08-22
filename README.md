@@ -809,3 +809,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <div align="center">
 Made with ❤️ in India
 </div>
+
+### Docker
+```bash
+docker run -d \
+  --name meilibridge \
+  -v ./config.yaml:/etc/meilibridge/config.yaml:ro \
+  -p 7701:7701 \
+  binarytouch/meilibridge:0.1.5
+```
