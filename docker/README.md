@@ -119,11 +119,11 @@ docker run -d \
 ## Docker Hub
 
 Images are automatically published to Docker Hub on releases:
-- `meilibridge/meilibridge:latest`
-- `meilibridge/meilibridge:1.0.0`
+- `binarytouch/meilibridge:latest`
+- `binarytouch/meilibridge:1.5.0`
 
 Pull and run:
 ```bash
-docker pull meilibridge/meilibridge:latest
-docker run -d -v $(pwd)/config.yaml:/config.yaml meilibridge/meilibridge:latest
+docker pull binarytouch/meilibridge:latest
+docker run -d -v $(pwd)/config.yaml:/config.yaml -p 7701:7701 binarytouch/meilibridge:latest
 ```

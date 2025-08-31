@@ -62,6 +62,20 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Update version in Cargo.toml
+      shell: bash
+      run: |
+        VERSION="${{ needs.validate-version.outputs.version_without_v }}"
+        if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          # macOS requires backup extension for sed -i
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+        else
+          # Linux and Windows (Git Bash) don't require backup extension
+          sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+        fi
+        echo "Updated Cargo.toml version to: $VERSION"
+    
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -199,6 +213,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Update version in Cargo.toml
+      run: |
+        VERSION="${{ needs.validate-version.outputs.version_without_v }}"
+        sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+        echo "Updated Cargo.toml version to: $VERSION"
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
@@ -220,13 +240,13 @@ jobs:
           ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:${{ needs.validate-version.outputs.version_without_v }}
           ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:latest
         build-args: |
-          VERSION=${{ needs.validate-version.outputs.version }}
+          VERSION=${{ needs.validate-version.outputs.version_without_v }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  # Update version references directly on main branch
-  update-version-references:
-    name: Update Version References
+  # Update changelog on main branch
+  update-changelog:
+    name: Update Changelog
     needs: [validate-version, create-release]
     runs-on: ubuntu-latest
     permissions:
@@ -238,29 +258,13 @@ jobs:
         persist-credentials: true
         ref: main
     
-    - name: Update version references
+    - name: Update CHANGELOG.md
       run: |
         VERSION="${{ needs.validate-version.outputs.version_without_v }}"
-        
-        # Update Cargo.toml version
-        sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
-        
-        # Update CHANGELOG.md
         DATE=$(date +%Y-%m-%d)
-        sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
         
-        # Add example docker run command to README if not present
-        if ! grep -q "docker run.*meilibridge" README.md; then
-          echo "" >> README.md
-          echo "### Docker" >> README.md
-          echo '```bash' >> README.md
-          echo "docker run -d \\" >> README.md
-          echo "  --name meilibridge \\" >> README.md
-          echo "  -v ./config.yaml:/etc/meilibridge/config.yaml:ro \\" >> README.md
-          echo "  -p 7701:7701 \\" >> README.md
-          echo "  ${{ secrets.DOCKERHUB_USERNAME }}/meilibridge:$VERSION" >> README.md
-          echo '```' >> README.md
-        fi
+        # Update CHANGELOG.md only
+        sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
     
     - name: Configure Git
       run: |
@@ -269,18 +273,13 @@ jobs:
     
     - name: Commit and push changes
       run: |
-        git add -A
+        git add CHANGELOG.md
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
-          git commit -m "chore: update version references to ${{ needs.validate-version.outputs.version }}
+          git commit -m "chore: update CHANGELOG.md for ${{ needs.validate-version.outputs.version }} release
 
-        Updates version references after the release of ${{ needs.validate-version.outputs.version }}.
-        
-        Changes:
-        - Updated version in Cargo.toml
-        - Updated CHANGELOG.md with release date
-        - Added Docker run example to README.md (if not present)
+        Updates CHANGELOG.md with release date for version ${{ needs.validate-version.outputs.version }}.
         [skip ci]"
           git push
         fi

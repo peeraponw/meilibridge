@@ -1,4 +1,4 @@
-//! Event deduplication for exactly-once delivery
+//! Event deduplication for at-least-once delivery
 
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;

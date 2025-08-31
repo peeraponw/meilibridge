@@ -79,9 +79,9 @@ pub struct Config {
     #[serde(default)]
     pub performance: PerformanceConfig,
 
-    /// Exactly-once delivery configuration
-    #[serde(default)]
-    pub exactly_once_delivery: ExactlyOnceDeliveryConfig,
+    /// At-least-once delivery configuration
+    #[serde(default, alias = "exactly_once_delivery")]
+    pub at_least_once_delivery: AtLeastOnceDeliveryConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -133,8 +133,8 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ExactlyOnceDeliveryConfig {
-    /// Enable exactly-once delivery guarantees
+pub struct AtLeastOnceDeliveryConfig {
+    /// Enable at-least-once delivery guarantees with deduplication
     #[serde(default = "default_true")]
     pub enabled: bool,
 
@@ -155,7 +155,7 @@ pub struct ExactlyOnceDeliveryConfig {
     pub checkpoint_before_write: bool,
 }
 
-impl Default for ExactlyOnceDeliveryConfig {
+impl Default for AtLeastOnceDeliveryConfig {
     fn default() -> Self {
         Self {
             enabled: true,

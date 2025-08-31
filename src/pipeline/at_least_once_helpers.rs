@@ -1,4 +1,4 @@
-//! Helper functions for exactly-once delivery in the pipeline
+//! Helper functions for at-least-once delivery in the pipeline
 
 use crate::delivery::DeduplicationKey;
 use crate::models::{stream_event::Event, Position};

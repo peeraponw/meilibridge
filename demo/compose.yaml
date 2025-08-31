@@ -1,0 +1,116 @@
+
+services:
+  postgres:
+    build: ./postgres
+    container_name: meilibridge-demo-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: demo
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./sql/pg_cron_jobs.sql:/docker-entrypoint-initdb.d/02-pg_cron_jobs.sql
+      - ./sql/bulk_insert.sql:/demo/sql/bulk_insert.sql
+      - postgres_data:/var/lib/postgresql/data
+    command: 
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "shared_preload_libraries=pg_cron,pgoutput"
+      - "-c"
+      - "cron.database_name=demo"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: meilibridge-demo-meilisearch
+    environment:
+      MEILI_MASTER_KEY: masterKey123
+      MEILI_ENV: development
+    ports:
+      - "7700:7700"
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: meilibridge-demo-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  meilibridge:
+    build: 
+      context: ../
+      dockerfile: docker/Dockerfile
+    container_name: meilibridge-demo
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/meilibridge.yaml:/app/config.yaml:ro
+    environment:
+      RUST_LOG: info,meilibridge=debug
+      MEILIBRIDGE_CONFIG: /app/config.yaml
+    entrypoint: ["/usr/local/bin/meilibridge"]
+    command: ["-c", "/app/config.yaml", "run"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  meilisearch-ui:
+    image: riccoxie/meilisearch-ui:latest
+    container_name: meilibridge-demo-meilisearch-ui
+    environment:
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: masterKey123
+    ports:
+      - "24900:24900"
+    depends_on:
+      meilisearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:24900"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  meilisearch_data:
+  redis_data:
+
+networks:
+  default:
+    name: meilibridge-demo

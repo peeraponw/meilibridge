@@ -149,7 +149,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "rate(meilibridge_exactly_once_violations_total[5m])",
+          "expr": "rate(meilibridge_at_least_once_violations_total[5m])",
           "legendFormat": "{{table}} - {{violation_type}}",
           "refId": "A"
         }

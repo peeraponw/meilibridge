@@ -116,7 +116,7 @@ pub fn create_test_config(postgres_url: &str, meilisearch_url: &str, redis_url: 
         error_handling: Default::default(),
         plugins: Default::default(),
         features: Default::default(),
-        exactly_once_delivery: Default::default(),
+        at_least_once_delivery: Default::default(),
     }
 }
 

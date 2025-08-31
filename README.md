@@ -141,6 +141,8 @@ docker-compose ps
 curl http://localhost:7701/api/v1/status
 ```
 
+More reference at [Docker Documentation](docker/README.md)
+
 ### Configuration File Setup
 
 Create a `config.yaml` file:
@@ -149,17 +151,18 @@ Create a `config.yaml` file:
 # Minimal configuration
 source:
   type: postgresql
-  postgresql:
-    connection:
-      host: localhost
-      port: 5432
-      database: myapp
-      username: postgres
-      password: ${POSTGRES_PASSWORD}
+  host: localhost
+  port: 5432
+  database: myapp
+  username: postgres
+  password: ${POSTGRES_PASSWORD}
 
 meilisearch:
   url: http://localhost:7700
   api_key: ${MEILI_MASTER_KEY}
+
+redis:
+  url: redis://localhost:6379
 
 sync_tasks:
   - table: users
@@ -308,6 +311,32 @@ Docker will automatically pull the correct architecture for your platform.
 
 ---
 
+## 🎮 Quick Demo Start
+
+```bash
+# Clone and start the demo
+git clone https://github.com/binary-touch/meilibridge.git
+cd meilibridge/demo
+./start.sh
+
+# Search products (after ~30 seconds)
+curl -X POST 'http://localhost:7700/indexes/products/search' \
+  -H 'Authorization: Bearer masterKey123' \
+  -H 'Content-Type: application/json' \
+  -d '{"q":"laptop","offset":0,"limit":20}'
+```
+
+### Demo Features
+
+- **Automatic Data Generation**: Simulates real-world e-commerce activity
+- **Error Recovery**: Test fault tolerance by stopping/starting services  
+- **Performance Testing**: Handle bulk operations and high-frequency updates
+- **Visual Interface**: Browse and search data at http://localhost:24900
+
+👉 **[Full Demo Documentation](demo/README.md)** - Detailed scenarios, troubleshooting, and advanced usage
+
+---
+
 ## 📊 Monitoring & Observability
 
 MeiliBridge provides comprehensive monitoring capabilities:
@@ -316,10 +345,9 @@ MeiliBridge provides comprehensive monitoring capabilities:
 
 ```yaml
 # Enable metrics in config.yaml
-metrics:
-  enabled: true
-  port: 9090
-  path: /metrics
+monitoring:
+  metrics_enabled: true
+  metrics_interval_seconds: 60
 ```
 
 Available metrics:
@@ -403,17 +431,18 @@ Create a `config.yaml` file with your settings:
 # Basic connection settings
 source:
   type: postgresql
-  postgresql:
-    connection:
-      host: localhost
-      port: 5432
-      database: myapp
-      username: postgres
-      password: ${POSTGRES_PASSWORD}  # Environment variable support
+  host: localhost
+  port: 5432
+  database: myapp
+  username: postgres
+  password: ${POSTGRES_PASSWORD}  # Environment variable support
 
 meilisearch:
   url: http://localhost:7700
   api_key: ${MEILI_MASTER_KEY}
+
+redis:
+  url: redis://localhost:6379
 
 # Define sync tasks
 sync_tasks:
@@ -599,7 +628,7 @@ redis:
   
   pool:
     max_size: 10               # Maximum connections
-    min_idle: 2                # Minimum idle connections
+    min_idle: 1                # Minimum idle connections
     connection_timeout: 5      # Connection timeout (seconds)
   
   # Checkpoint retention (New!)
@@ -657,11 +686,12 @@ api:
   
   auth:
     enabled: false             # Enable authentication
-    type: bearer               # Auth type (bearer)
-    tokens:
+    jwt_secret: ${JWT_SECRET}  # JWT secret key
+    token_expiry: 3600         # Token expiry (seconds)
+    api_keys:
       - name: admin
-        token: ${API_TOKEN}    # Admin token
-        role: admin
+        key: ${API_KEY}        # API key
+        permissions: ["read", "write", "admin"]
 ```
 
 #### Monitoring & Logging
@@ -687,7 +717,7 @@ features:
 #### At-Least-Once Delivery with Deduplication
 
 ```yaml
-exactly_once_delivery:        # Name kept for backward compatibility
+at_least_once_delivery:       # At-least-once delivery with deduplication
   enabled: true               # Enable at-least-once delivery
   deduplication_window: 10000 # Events to track for deduplication
   transaction_timeout_secs: 30 # Transaction timeout
@@ -809,12 +839,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <div align="center">
 Made with ❤️ in India
 </div>
-
-### Docker
-```bash
-docker run -d \
-  --name meilibridge \
-  -v ./config.yaml:/etc/meilibridge/config.yaml:ro \
-  -p 7701:7701 \
-  binarytouch/meilibridge:0.1.5
-```
