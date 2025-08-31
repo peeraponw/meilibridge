@@ -545,10 +545,10 @@ Monitor parallel processing performance:
 
 ```bash
 # Check parallel processing status
-curl http://localhost:7701/api/parallel/status
+curl http://localhost:7701/parallel/status
 
 # View queue sizes
-curl http://localhost:7701/api/parallel/queues
+curl http://localhost:7701/parallel/queues
 
 # Prometheus metrics
 meilibridge_parallel_worker_events_total

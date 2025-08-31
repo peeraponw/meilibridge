@@ -355,12 +355,12 @@ curl http://localhost:7708/metrics
 
 3. **Check sync status**:
 ```bash
-curl http://localhost:7708/api/sync-tasks
+curl http://localhost:7708/tasks
 ```
 
 4. **View specific sync task**:
 ```bash
-curl http://localhost:7708/api/sync-tasks/users_sync
+curl http://localhost:7708/tasks/users_sync
 ```
 
 ### Test Data Sync
@@ -419,10 +419,10 @@ This will:
 Monitor parallel processing:
 ```bash
 # Check memory usage
-curl http://localhost:7708/api/diagnostics/memory
+curl http://localhost:7708/diagnostics/memory
 
 # View connection pool status
-curl http://localhost:7708/api/diagnostics/connections
+curl http://localhost:7708/diagnostics/connections
 
 # Get component health
 curl http://localhost:7708/health/pipeline
@@ -534,7 +534,7 @@ INSERT INTO users VALUES (1, '{"name": "John", "preferences": {"theme": "dark"}}
 4. **High Memory Usage**:
    - Reduce batch_size in config
    - Enable adaptive batching
-   - Check memory limits: `curl http://localhost:7708/api/diagnostics/memory`
+   - Check memory limits: `curl http://localhost:7708/diagnostics/memory`
 
 5. **Replication Lag**:
    - Monitor lag with metrics endpoint

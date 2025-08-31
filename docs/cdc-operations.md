@@ -406,7 +406,7 @@ logging:
 Use the diagnostics API for real-time CDC inspection:
 ```bash
 # Get current CDC status
-curl http://localhost:7708/api/diagnostics/cdc
+curl http://localhost:7708/diagnostics/cdc
 
 # Response:
 {
@@ -433,7 +433,7 @@ MeiliBridge provides comprehensive CDC debugging tools:
 #### Event Capture
 ```bash
 # Start capturing CDC events
-curl -X POST http://localhost:7708/api/diagnostics/cdc/capture \
+curl -X POST http://localhost:7708/diagnostics/cdc/capture \
   -H "Content-Type: application/json" \
   -d '{
     "enabled": true,
@@ -443,7 +443,7 @@ curl -X POST http://localhost:7708/api/diagnostics/cdc/capture \
   }'
 
 # Get captured events
-curl http://localhost:7708/api/diagnostics/cdc/events
+curl http://localhost:7708/diagnostics/cdc/events
 
 # Response:
 {
@@ -466,7 +466,7 @@ curl http://localhost:7708/api/diagnostics/cdc/events
 #### Test Event Generation
 ```bash
 # Generate test CDC event
-curl -X POST http://localhost:7708/api/diagnostics/cdc/test-event \
+curl -X POST http://localhost:7708/diagnostics/cdc/test-event \
   -H "Content-Type: application/json" \
   -d '{
     "table": "public.users",
@@ -928,29 +928,29 @@ checkpoint:
 #### Manual Checkpoint Management
 ```bash
 # Get current checkpoints
-curl http://localhost:7708/api/checkpoints
+curl http://localhost:7708/checkpoints
 
 # Set checkpoint for specific task
-curl -X PUT http://localhost:7708/api/checkpoints/users_sync \
+curl -X PUT http://localhost:7708/checkpoints/users_sync \
   -H "Content-Type: application/json" \
   -d '{"lsn": "0/1634FA0", "xid": 12345}'
 
 # Delete checkpoint (force full resync)
-curl -X DELETE http://localhost:7708/api/checkpoints/users_sync
+curl -X DELETE http://localhost:7708/checkpoints/users_sync
 ```
 
 **Backup and Export**:
 ```bash
 # Export all checkpoints
-curl http://localhost:7708/api/checkpoints/export > checkpoints_$(date +%Y%m%d).json
+curl http://localhost:7708/checkpoints/export > checkpoints_$(date +%Y%m%d).json
 
 # Import checkpoints
-curl -X POST http://localhost:7708/api/checkpoints/import \
+curl -X POST http://localhost:7708/checkpoints/import \
   -H "Content-Type: application/json" \
   -d @checkpoints_20240115.json
 
 # Backup to S3 (using AWS CLI)
-aws s3 cp <(curl -s http://localhost:7708/api/checkpoints/export) \
+aws s3 cp <(curl -s http://localhost:7708/checkpoints/export) \
   s3://backup-bucket/meilibridge/checkpoints/$(date +%Y%m%d_%H%M%S).json
 ```
 
@@ -968,19 +968,19 @@ SELECT pg_create_logical_replication_slot('meilibridge_slot', 'pgoutput');
 **CDC Control Operations**:
 ```bash
 # Pause specific sync task
-curl -X POST http://localhost:7708/api/sync-tasks/users_sync/pause
+curl -X POST http://localhost:7708/tasks/users_sync/pause
 
 # Resume specific sync task
-curl -X POST http://localhost:7708/api/sync-tasks/users_sync/resume
+curl -X POST http://localhost:7708/tasks/users_sync/resume
 
 # Pause all CDC operations
-curl -X POST http://localhost:7708/api/cdc/pause-all
+curl -X POST http://localhost:7708/cdc/pause-all
 
 # Resume all CDC operations  
-curl -X POST http://localhost:7708/api/cdc/resume-all
+curl -X POST http://localhost:7708/cdc/resume-all
 
 # Get pause/resume status
-curl http://localhost:7708/api/cdc/status
+curl http://localhost:7708/cdc/status
 ```
 
 **Graceful Restart**:
@@ -1011,7 +1011,7 @@ replication:
 
 4. Trigger full resync:
 ```bash
-curl -X POST http://localhost:7708/api/v1/tasks/full-sync
+curl -X POST http://localhost:7708/tasks/users_sync/full-sync
 ```
 
 ### 5. Security Best Practices

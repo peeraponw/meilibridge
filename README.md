@@ -138,7 +138,7 @@ docker-compose up -d
 docker-compose ps
 
 # Check synchronization status
-curl http://localhost:7701/api/v1/status
+curl http://localhost:7701/status
 ```
 
 More reference at [Docker Documentation](docker/README.md)
@@ -374,35 +374,35 @@ Import our [Grafana dashboard](monitoring/grafana-dashboard.json) for visualizin
 
 ### REST API Endpoints
 
-**Base URL**: `http://localhost:7701/api/v1`
+**Base URL**: `http://localhost:7701`
 
 #### Sync Task Management
-- `GET /api/v1/tasks` - List all sync tasks
-- `GET /api/v1/tasks/:id` - Get sync task details
-- `POST /api/v1/tasks` - Create new sync task
-- `PUT /api/v1/tasks/:id` - Update sync task
-- `DELETE /api/v1/tasks/:id` - Delete sync task
-- `POST /api/v1/tasks/:id/pause` - Pause sync task
-- `POST /api/v1/tasks/:id/resume` - Resume sync task
-- `POST /api/v1/tasks/:id/full-sync` - Trigger full table sync
-- `GET /api/v1/tasks/:id/stats` - Get task statistics
+- `GET /tasks` - List all sync tasks
+- `GET /tasks/:id` - Get sync task details
+- `POST /tasks` - Create new sync task
+- `PUT /tasks/:id` - Update sync task
+- `DELETE /tasks/:id` - Delete sync task
+- `POST /tasks/:id/pause` - Pause sync task
+- `POST /tasks/:id/resume` - Resume sync task
+- `POST /tasks/:id/full-sync` - Trigger full table sync
+- `GET /tasks/:id/stats` - Get task statistics
 
 #### CDC Control
-- `POST /api/v1/cdc/pause` - Pause all CDC processing
-- `POST /api/v1/cdc/resume` - Resume all CDC processing
-- `GET /api/v1/cdc/status` - Get CDC status and replication info
+- `POST /cdc/pause` - Pause all CDC processing
+- `POST /cdc/resume` - Resume all CDC processing
+- `GET /cdc/status` - Get CDC status and replication info
 
 #### Dead Letter Queue
-- `GET /api/v1/dead-letters` - Get DLQ statistics
-- `POST /api/v1/dead-letters/:task_id/reprocess` - Reprocess failed events
+- `GET /dead-letters` - Get DLQ statistics
+- `POST /dead-letters/:task_id/reprocess` - Reprocess failed events
 
 #### Cache Management
-- `GET /api/v1/cache/stats` - Get statement cache statistics
-- `POST /api/v1/cache/clear` - Clear statement cache
+- `GET /cache/stats` - Get statement cache statistics
+- `POST /cache/clear` - Clear statement cache
 
 #### Parallel Processing
-- `GET /api/v1/parallel/status` - Get parallel processing status
-- `GET /api/v1/parallel/queues` - Get queue sizes for all tables
+- `GET /parallel/status` - Get parallel processing status
+- `GET /parallel/queues` - Get queue sizes for all tables
 
 More info at [API Documentation](docs/api-development.md)
 

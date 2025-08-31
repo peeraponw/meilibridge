@@ -18,7 +18,7 @@ This guide covers the MeiliBridge REST API, development practices, testing strat
 
 MeiliBridge provides a comprehensive REST API for managing sync tasks, monitoring health, and accessing metrics. The API follows RESTful principles and returns JSON responses.
 
-**Base URL**: `http://localhost:7708/api/v1`
+**Base URL**: `http://localhost:7708`
 
 ### API Design Principles
 
@@ -88,7 +88,7 @@ Authorization: Bearer your-api-token
 **Example**:
 ```bash
 curl -H "Authorization: Bearer ${API_TOKEN}" \
-  http://localhost:7708/api/v1/tasks
+  http://localhost:7708/tasks
 ```
 
 ### API Token Configuration
@@ -185,7 +185,7 @@ meilibridge_cdc_lag_bytes{slot="meilibridge_slot"} 1024
 
 ### Task Management
 
-#### GET /api/v1/tasks
+#### GET /tasks
 List all sync tasks.
 
 **Query Parameters**:
@@ -222,7 +222,7 @@ List all sync tasks.
 }
 ```
 
-#### GET /api/v1/tasks/:id
+#### GET /tasks/:id
 Get specific task details.
 
 **Response**:
@@ -259,7 +259,7 @@ Get specific task details.
 }
 ```
 
-#### POST /api/v1/tasks
+#### POST /tasks
 Create a new sync task.
 
 **Request Body**:
@@ -299,18 +299,18 @@ Create a new sync task.
 }
 ```
 
-#### PUT /api/v1/tasks/:id
+#### PUT /tasks/:id
 Update task configuration.
 
-**Request Body**: Same as POST /api/v1/tasks
+**Request Body**: Same as POST /tasks
 
-#### DELETE /api/v1/tasks/:id
+#### DELETE /tasks/:id
 Delete a sync task.
 
 **Query Parameters**:
 - `force`: Force delete even if task is active (default: false)
 
-#### POST /api/v1/tasks/:id/pause
+#### POST /tasks/:id/pause
 Pause a sync task.
 
 **Response**:
@@ -325,10 +325,10 @@ Pause a sync task.
 }
 ```
 
-#### POST /api/v1/tasks/:id/resume
+#### POST /tasks/:id/resume
 Resume a paused sync task.
 
-#### POST /api/v1/tasks/:id/full-sync
+#### POST /tasks/:id/full-sync
 Trigger a full synchronization for a task.
 
 **Request Body** (optional):
@@ -340,7 +340,7 @@ Trigger a full synchronization for a task.
 }
 ```
 
-#### GET /api/v1/tasks/:id/stats
+#### GET /tasks/:id/stats
 Get detailed statistics for a task.
 
 **Response**:
@@ -365,7 +365,7 @@ Get detailed statistics for a task.
 
 ### Dead Letter Queue
 
-#### GET /api/v1/dead-letters
+#### GET /dead-letters
 Get dead letter queue statistics.
 
 **Response**:
@@ -389,7 +389,7 @@ Get dead letter queue statistics.
 }
 ```
 
-#### POST /api/v1/dead-letters/:task_id/reprocess
+#### POST /dead-letters/:task_id/reprocess
 Reprocess dead letter entries for a task.
 
 **Request Body**:
@@ -402,13 +402,13 @@ Reprocess dead letter entries for a task.
 
 ### CDC Control
 
-#### POST /api/v1/cdc/pause
+#### POST /cdc/pause
 Pause all CDC consumption.
 
-#### POST /api/v1/cdc/resume
+#### POST /cdc/resume
 Resume CDC consumption.
 
-#### GET /api/v1/cdc/status
+#### GET /cdc/status
 Get CDC status and statistics.
 
 **Response**:
@@ -439,13 +439,13 @@ Get CDC status and statistics.
 
 ### Source Management
 
-#### GET /api/v1/sources
+#### GET /sources
 List configured sources.
 
-#### GET /api/v1/sources/:id
+#### GET /sources/:id
 Get source details and status.
 
-#### POST /api/v1/sources/test
+#### POST /sources/test
 Test source connection.
 
 **Request Body**:
@@ -464,7 +464,7 @@ Test source connection.
 
 ### Parallel Processing
 
-#### GET /api/v1/parallel/status
+#### GET /parallel/status
 
 Get parallel processing status and configuration.
 
@@ -493,7 +493,7 @@ Get parallel processing status and configuration.
 }
 ```
 
-#### GET /api/v1/parallel/queues
+#### GET /parallel/queues
 
 Get current queue sizes for all tables.
 
@@ -514,7 +514,7 @@ Get current queue sizes for all tables.
 
 ### Metrics
 
-#### GET /api/v1/metrics
+#### GET /metrics
 
 Get Prometheus metrics in text format.
 
@@ -552,7 +552,7 @@ meilibridge_statement_cache_hit_rate 0.85
 
 MeiliBridge includes a prepared statement cache for PostgreSQL queries to improve performance:
 
-#### GET /api/v1/cache/stats
+#### GET /cache/stats
 
 Get statement cache statistics.
 
@@ -569,7 +569,7 @@ Get statement cache statistics.
 }
 ```
 
-#### POST /api/v1/cache/clear
+#### POST /cache/clear
 
 Clear the statement cache.
 
