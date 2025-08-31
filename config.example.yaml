@@ -137,7 +137,7 @@ sync_tasks:
       delete_values:              # Values that indicate deletion
         - "DELETED"
         - "INACTIVE"
-        - false                   # Can also check boolean fields
+        - "false"                 # Can also check boolean fields
       handle_on_full_sync: true   # Filter out during full sync
       handle_on_cdc: true         # Transform UPDATE to DELETE during CDC
 
@@ -215,8 +215,7 @@ monitoring:
   health_check_interval_seconds: 30
 
 # At-least-once delivery configuration with deduplication
-# Note: Named 'exactly_once_delivery' for backward compatibility
-exactly_once_delivery:
+at_least_once_delivery:
   enabled: true                       # Enable at-least-once delivery with deduplication
   deduplication_window: 10000         # Number of events to track for deduplication
   transaction_timeout_secs: 30        # Timeout for two-phase commit transactions

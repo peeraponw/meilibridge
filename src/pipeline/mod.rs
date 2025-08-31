@@ -1,7 +1,7 @@
 pub mod adaptive_batching;
+pub mod at_least_once_helpers;
 pub mod backpressure;
 pub mod cdc_coordinator;
-pub mod exactly_once_helpers;
 pub mod filter;
 pub mod mapper;
 pub mod memory_monitor;

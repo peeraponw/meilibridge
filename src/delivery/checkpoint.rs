@@ -1,4 +1,4 @@
-//! Transaction-based checkpointing for exactly-once delivery
+//! Transaction-based checkpointing for at-least-once delivery
 
 use crate::checkpoint::storage::CheckpointStorage;
 use crate::error::{MeiliBridgeError, Result};
@@ -18,7 +18,7 @@ pub struct CheckpointTransaction {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// Manages transactional checkpoints for exactly-once delivery
+/// Manages transactional checkpoints for at-least-once delivery
 pub struct TransactionalCheckpoint {
     storage: Arc<dyn CheckpointStorage>,
     transactions: Arc<Mutex<Vec<CheckpointTransaction>>>,

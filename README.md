@@ -689,7 +689,7 @@ features:
 #### At-Least-Once Delivery with Deduplication
 
 ```yaml
-exactly_once_delivery:        # Name kept for backward compatibility
+at_least_once_delivery:       # At-least-once delivery with deduplication
   enabled: true               # Enable at-least-once delivery
   deduplication_window: 10000 # Events to track for deduplication
   transaction_timeout_secs: 30 # Transaction timeout

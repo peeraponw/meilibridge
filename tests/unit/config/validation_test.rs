@@ -62,7 +62,7 @@ mod validation_tests {
             plugins: Default::default(),
             features: Default::default(),
             performance: Default::default(),
-            exactly_once_delivery: Default::default(),
+            at_least_once_delivery: Default::default(),
         };
 
         // If we can create it, it's valid
@@ -103,7 +103,7 @@ mod validation_tests {
             plugins: Default::default(),
             features: Default::default(),
             performance: Default::default(),
-            exactly_once_delivery: Default::default(),
+            at_least_once_delivery: Default::default(),
         };
 
         assert_eq!(config.sync_tasks.len(), 0);

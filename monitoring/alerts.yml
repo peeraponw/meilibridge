@@ -24,7 +24,7 @@ groups:
       
       # At-Least-Once Deduplication Failures
       - alert: AtLeastOnceDeduplicationFailures
-        expr: rate(meilibridge_exactly_once_violations_total[5m]) > 0
+        expr: rate(meilibridge_at_least_once_violations_total[5m]) > 0
         for: 1m
         labels:
           severity: critical

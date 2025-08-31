@@ -299,8 +299,7 @@ plugins:
   enabled: []                     # List of enabled plugins
 
 # At-least-once delivery with deduplication
-# Note: Named 'exactly_once_delivery' for backward compatibility
-exactly_once_delivery:
+at_least_once_delivery:
   enabled: true                   # Enable at-least-once delivery
   deduplication_window: 10000     # Events to track for deduplication
   transaction_timeout_secs: 30    # Transaction timeout

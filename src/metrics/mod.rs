@@ -189,10 +189,10 @@ lazy_static! {
     // === Phase 3.1 Production Monitoring Metrics ===
 
     // Data Integrity Metrics
-    /// Exactly-once delivery violations
-    pub static ref EXACTLY_ONCE_VIOLATIONS_TOTAL: CounterVec = register_counter_vec!(
-        "meilibridge_exactly_once_violations_total",
-        "Total number of exactly-once delivery violations detected",
+    /// At-least-once delivery violations (duplicate events detected)
+    pub static ref AT_LEAST_ONCE_VIOLATIONS_TOTAL: CounterVec = register_counter_vec!(
+        "meilibridge_at_least_once_violations_total",
+        "Total number of duplicate events detected in at-least-once delivery",
         &["table", "violation_type"]
     ).unwrap();
 
@@ -365,9 +365,9 @@ pub fn record_api_request(method: &str, endpoint: &str, status: u16, duration: D
 
 // === Helper functions for new production metrics ===
 
-/// Record an exactly-once delivery violation
-pub fn record_exactly_once_violation(table: &str, violation_type: &str) {
-    EXACTLY_ONCE_VIOLATIONS_TOTAL
+/// Record an at-least-once delivery violation (duplicate event)
+pub fn record_at_least_once_violation(table: &str, violation_type: &str) {
+    AT_LEAST_ONCE_VIOLATIONS_TOTAL
         .with_label_values(&[table, violation_type])
         .inc();
 }

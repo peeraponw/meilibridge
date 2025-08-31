@@ -42,7 +42,7 @@ async fn test_orchestrator_creation_no_sources() {
         features: Default::default(),
         monitoring: Default::default(),
         performance: Default::default(),
-        exactly_once_delivery: Default::default(),
+        at_least_once_delivery: Default::default(),
         error_handling: Default::default(),
         plugins: Default::default(),
     };
@@ -114,7 +114,7 @@ async fn test_orchestrator_creation_with_single_source() {
         features: Default::default(),
         monitoring: Default::default(),
         performance: Default::default(),
-        exactly_once_delivery: Default::default(),
+        at_least_once_delivery: Default::default(),
         error_handling: Default::default(),
         plugins: Default::default(),
     };
@@ -200,7 +200,7 @@ async fn test_orchestrator_with_multiple_sources() {
         features: Default::default(),
         monitoring: Default::default(),
         performance: Default::default(),
-        exactly_once_delivery: Default::default(),
+        at_least_once_delivery: Default::default(),
         error_handling: Default::default(),
         plugins: Default::default(),
     };
@@ -271,7 +271,7 @@ async fn test_orchestrator_with_filters() {
         features: Default::default(),
         monitoring: Default::default(),
         performance: Default::default(),
-        exactly_once_delivery: Default::default(),
+        at_least_once_delivery: Default::default(),
         error_handling: Default::default(),
         plugins: Default::default(),
     };
@@ -352,7 +352,7 @@ async fn test_orchestrator_with_soft_delete() {
         features: Default::default(),
         monitoring: Default::default(),
         performance: Default::default(),
-        exactly_once_delivery: Default::default(),
+        at_least_once_delivery: Default::default(),
         error_handling: Default::default(),
         plugins: Default::default(),
     };
@@ -431,7 +431,7 @@ async fn test_dlq_operations() {
         features: Default::default(),
         monitoring: Default::default(),
         performance: Default::default(),
-        exactly_once_delivery: Default::default(),
+        at_least_once_delivery: Default::default(),
         error_handling: Default::default(),
         plugins: Default::default(),
     };

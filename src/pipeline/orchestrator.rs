@@ -421,19 +421,19 @@ impl PipelineOrchestrator {
         self.checkpoint_manager = Some(Arc::new(checkpoint_manager));
 
         // Initialize at-least-once delivery if enabled
-        if self.config.exactly_once_delivery.enabled {
+        if self.config.at_least_once_delivery.enabled {
             info!("Initializing at-least-once delivery guarantees");
 
             // Create at-least-once manager
             let at_least_once_config = crate::delivery::AtLeastOnceConfig {
-                enabled: self.config.exactly_once_delivery.enabled,
-                deduplication_window: self.config.exactly_once_delivery.deduplication_window,
+                enabled: self.config.at_least_once_delivery.enabled,
+                deduplication_window: self.config.at_least_once_delivery.deduplication_window,
                 transaction_timeout_secs: self
                     .config
-                    .exactly_once_delivery
+                    .at_least_once_delivery
                     .transaction_timeout_secs,
-                two_phase_commit: self.config.exactly_once_delivery.two_phase_commit,
-                checkpoint_before_write: self.config.exactly_once_delivery.checkpoint_before_write,
+                two_phase_commit: self.config.at_least_once_delivery.two_phase_commit,
+                checkpoint_before_write: self.config.at_least_once_delivery.checkpoint_before_write,
             };
 
             let at_least_once_manager = Arc::new(crate::delivery::AtLeastOnceManager::new(
@@ -1467,7 +1467,7 @@ impl PipelineOrchestrator {
         event_batch: &mut Vec<Event>,
         params: AtLeastOnceBatchParams<'_>,
     ) -> Result<()> {
-        use crate::pipeline::exactly_once_helpers::{
+        use crate::pipeline::at_least_once_helpers::{
             create_dedup_key_from_event, extract_position_from_event,
         };
 
