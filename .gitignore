@@ -190,7 +190,7 @@ CLAUDE.md
 CRUSH.md
 
 # Project Specific
-tasks/config.yaml
+config.yaml
 .env
 logs/
 *.log

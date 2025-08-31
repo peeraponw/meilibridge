@@ -35,7 +35,7 @@ redis:
     #[test]
     fn test_yaml_file_loading() {
         let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("../../../tasks/config.yaml");
+        let config_path = temp_dir.path().join("config.yaml");
         fs::write(&config_path, create_test_yaml_content()).unwrap();
 
         // Note: In the actual implementation, we would load and parse the config
