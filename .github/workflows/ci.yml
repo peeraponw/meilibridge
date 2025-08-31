@@ -2,8 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
     branches: [ main ]
   schedule:
     # Run at 2 AM UTC every Monday to catch dependency issues

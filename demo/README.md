@@ -181,17 +181,24 @@ curl http://localhost:8080/health/redis
 
 ## Automated Data Generation with pg_cron
 
-The demo uses PostgreSQL's pg_cron extension to automatically generate realistic data changes:
+The demo uses PostgreSQL's pg_cron extension to automatically generate realistic data changes. The pg_cron jobs are initialized automatically when the PostgreSQL container starts.
 
-### Scheduled Jobs
-- **New Products**: Inserts new products every minute
-- **Price Updates**: Updates random product prices every minute
-- **Stock Changes**: Modifies stock levels every minute
-- **Tag Updates**: Adds trending tags every minute
-- **Soft Deletes**: Removes old products every 2 minutes
-- **Product Restoration**: Restores deleted products every minute
-- **Category Sales**: Applies bulk discounts every 5 minutes
-- **Bulk Transactions**: Simulates bundle purchases every 3 minutes
+### How pg_cron Jobs Are Initialized
+The `pg_cron_jobs.sql` file is executed during PostgreSQL initialization:
+- The file is mounted as `/docker-entrypoint-initdb.d/02-pg_cron_jobs.sql` in the postgres container
+- It runs automatically after `01-init.sql` when the PostgreSQL container first starts
+- This initialization happens only once during the initial database setup
+- The pg_cron extension is enabled via `shared_preload_libraries=pg_cron` in the postgres command
+
+### Scheduled Jobs and Time Intervals
+- **New Products** (`* * * * *` - every minute): Inserts 1 new product
+- **Price Updates** (`* * * * *` - every minute): Updates prices for 5 random products
+- **Stock Changes** (`* * * * *` - every minute): Modifies stock levels for 10 random products
+- **Tag Updates** (`* * * * *` - every minute): Adds trending tags to 3 products
+- **Product Restoration** (`* * * * *` - every minute): Restores 1 soft-deleted product
+- **Soft Deletes** (`*/2 * * * *` - every 2 minutes): Removes 2 products older than 1 hour
+- **Bulk Transactions** (`*/3 * * * *` - every 3 minutes): Simulates bundle purchases of 3 electronics items
+- **Category Sales** (`*/5 * * * *` - every 5 minutes): Applies 10-30% discount to products in a random category
 
 ### Monitor pg_cron Jobs
 ```bash
