@@ -246,21 +246,23 @@ api:
   # CORS settings
   cors:
     enabled: true
-    origins: ["http://localhost:3000"]
-    methods: ["GET", "POST", "PUT", "DELETE"]
-    headers: ["Content-Type", "Authorization"]
+    allowed_origins: ["http://localhost:3000"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_headers: ["Content-Type", "Authorization"]
+    max_age: 3600
   
   # Authentication
   auth:
-    enabled: true
-    type: "bearer"
-    tokens:
+    enabled: false
+    jwt_secret: "${JWT_SECRET}"
+    token_expiry: 3600
+    api_keys:
       - name: "admin"
-        token: "${API_ADMIN_TOKEN}"
-        role: "admin"
+        key: "${API_KEY}"
+        permissions: ["read", "write", "admin"]
       - name: "readonly"
-        token: "${API_READONLY_TOKEN}"
-        role: "read"
+        key: "${API_READONLY_KEY}"
+        permissions: ["read"]
 
 # Logging configuration
 logging:
@@ -587,11 +589,12 @@ performance:
 api:
   auth:
     enabled: true
-    type: "bearer"
-    tokens:
+    jwt_secret: "${JWT_SECRET}"
+    token_expiry: 3600
+    api_keys:
       - name: "admin"
-        token: "${API_ADMIN_TOKEN}"
-        role: "admin"
+        key: "${API_ADMIN_KEY}"
+        permissions: ["read", "write", "admin"]
 ```
 
 ### TLS Configuration

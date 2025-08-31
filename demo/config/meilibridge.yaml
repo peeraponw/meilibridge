@@ -1,0 +1,41 @@
+# MeiliBridge Demo Configuration - Correct Format
+
+# API server configuration
+api:
+  host: "0.0.0.0"
+  port: 8080
+
+# PostgreSQL source configuration
+source:
+  type: postgresql
+  # Connection parameters are flattened at this level
+  host: postgres
+  port: 5432
+  database: demo
+  username: postgres
+  password: postgres
+  slot_name: meilibridge_demo_slot
+  publication: meilibridge_pub
+  pool:
+    max_size: 10
+    min_idle: 1
+
+# Meilisearch configuration
+meilisearch:
+  url: http://meilisearch:7700
+  api_key: masterKey123
+
+# Redis configuration
+redis:
+  url: redis://redis:6379
+
+# Sync task definitions
+sync_tasks:
+  - id: products_sync
+    table: public.products
+    index: products
+    primary_key: id
+    full_sync_on_start: true
+    options:
+      batch_size: 100
+      batch_timeout_ms: 1000

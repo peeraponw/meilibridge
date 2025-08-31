@@ -9,7 +9,7 @@ app:
     environment: "development"
     region: "us-east-1"
 
-# Option 1: Single source configuration (backward compatible)
+# Option 1: Single source configuration
 # source:
 #   type: postgresql
 #   host: "localhost"

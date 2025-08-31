@@ -398,40 +398,61 @@ app:
 # PostgreSQL source configuration
 source:
   type: postgresql
-  postgresql:
-    host: "localhost"
-    port: 5432
-    database: "myapp"
-    user: "replication_user"
-    password: "your_password"  # Can use ${POSTGRES_PASSWORD} for env var
-    
-    # Connection pool settings
-    pool:
-      max_size: 10
-      min_idle: 2
-      acquire_timeout: 30
-      idle_timeout: 600
-      max_lifetime: 1800
-    
-    # Replication settings
-    replication:
-      slot_name: "meilibridge_slot"
-      publication_name: "meilibridge_pub"
-      create_slot: true
-      temporary_slot: false
-      start_lsn: null  # Optional: specify starting position
+  host: "localhost"
+  port: 5432
+  database: "myapp"
+  username: "replication_user"
+  password: "your_password"  # Can use ${POSTGRES_PASSWORD} for env var
+  
+  # Connection pool settings
+  pool:
+    max_size: 10
+    min_idle: 1
+    connection_timeout: 30
+    idle_timeout: 600
+  
+  # Replication settings
+  slot_name: "meilibridge_slot"
+  publication: "meilibridge_pub"
+  
+  # SSL/TLS configuration
+  ssl:
+    mode: "disable"  # disable, prefer, require, verify_ca, verify_full
+    ca_cert: "/path/to/ca.crt"
+    client_cert: "/path/to/client.crt"
+    client_key: "/path/to/client.key"
+  
+  # Statement cache settings
+  statement_cache:
+    enabled: true
+    max_size: 100
 
 # Meilisearch destination configuration
 meilisearch:
   url: "http://localhost:7700"
   api_key: "your_master_key"  # Can use ${MEILI_MASTER_KEY}
   timeout: 30
+  max_connections: 10
+  batch_size: 1000
+  primary_key: "id"
+  auto_create_index: true
   
-  # Optional settings
-  max_retries: 3
-  retry_on_timeout: true
+  # Index settings template
+  index_settings:
+    searchable_attributes: []
+    displayed_attributes: []
+    filterable_attributes: []
+    sortable_attributes: []
+  
+  # Circuit breaker configuration
+  circuit_breaker:
+    enabled: true
+    error_rate: 0.5
+    min_request_count: 10
+    consecutive_failures: 5
+    timeout_secs: 60
 
-# Redis configuration for distributed mode
+# Redis configuration for state management
 redis:
   url: "redis://localhost:6379"
   password: null  # Can use ${REDIS_PASSWORD}
@@ -440,9 +461,13 @@ redis:
   
   pool:
     max_size: 10
-    min_idle: 2
+    min_idle: 1
     connection_timeout: 5
-    idle_timeout: 60
+  
+  checkpoint_retention:
+    max_checkpoints_per_task: 10
+    cleanup_on_memory_pressure: true
+    memory_pressure_threshold: 80.0
 
 # Sync task definitions
 sync_tasks:
@@ -459,37 +484,30 @@ sync_tasks:
     
     # Filter configuration (optional)
     filter:
-      tables:
-        whitelist: ["public.users"]
       event_types: ["create", "update", "delete"]
       conditions:
-        - op: not_equals
-          field: "deleted"
+        - field: "deleted"
+          op: not_equals
           value: true
     
     # Transform configuration (optional)
     transform:
       fields:
         public.users:
-          email:
-            type: lowercase
-            fields: ["email"]
-          full_name:
-            type: compute
-            expression: "concat(first_name, last_name)"
-            to: "full_name"
+          - field: "email"
+            transform: "lowercase"
+          - field: "full_name"
+            transform: "concat"
+            source_fields: ["first_name", "last_name"]
     
     # Field mapping (optional)
     mapping:
       tables:
         public.users:
-          name: "users"  # Rename table
           fields:
-            user_id: "id"  # Rename field
+            user_id: "id"
             created_at: "created_timestamp"
-      
-      unmapped_fields_strategy: "include"  # include, exclude, or prefix
-      unmapped_fields_prefix: "_"
+      unmapped_fields_strategy: "include"
     
     # Sync options
     options:
@@ -516,51 +534,38 @@ sync_tasks:
 
 # API server configuration
 api:
-  enabled: true
   host: "0.0.0.0"
-  port: 8080
+  port: 7701
   
   # CORS settings
   cors:
     enabled: true
-    origins: ["http://localhost:3000"]
-    methods: ["GET", "POST", "PUT", "DELETE"]
-    headers: ["Content-Type", "Authorization"]
+    allowed_origins: ["http://localhost:3000"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_headers: ["Content-Type", "Authorization"]
+    max_age: 3600
   
   # Authentication
   auth:
-    enabled: true
-    type: "bearer"
-    tokens:
+    enabled: false
+    jwt_secret: "your-secret-key"
+    token_expiry: 3600
+    api_keys:
       - name: "admin"
-        token: "your-admin-token"  # Can use ${API_ADMIN_TOKEN}
-        role: "admin"
-      - name: "readonly"
-        token: "your-readonly-token"
-        role: "read"
+        key: "your-admin-key"
+        permissions: ["read", "write", "admin"]
 
 # Logging configuration
 logging:
   level: "info"  # trace, debug, info, warn, error
-  format: "pretty"  # pretty, json, compact
-  
-  # File output
-  file:
-    enabled: true
-    path: "/var/log/meilibridge/app.log"
-    rotation: "daily"  # daily, size, never
-    max_size: "100MB"
-    max_age: 7
-    max_backups: 5
-    compress: true
-  
-  # Optional: send logs to external service
-  export:
-    enabled: false
-    endpoint: "https://logs.example.com"
-    api_key: "your-api-key"
-    batch_size: 100
-    flush_interval: 10
+  format: "pretty"  # pretty, json
+
+# Monitoring configuration
+monitoring:
+  metrics_enabled: true
+  metrics_interval_seconds: 60
+  health_checks_enabled: true
+  health_check_interval_seconds: 30
 
 # Feature flags
 features:
@@ -569,12 +574,67 @@ features:
   metrics_export: true     # Export Prometheus metrics
   distributed_mode: false  # Enable distributed mode with Redis
 
+# Performance configuration
+performance:
+  parallel_processing:
+    enabled: false
+    workers_per_table: 4
+    max_concurrent_events: 1000
+    work_stealing: true
+    work_steal_interval_ms: 100
+    work_steal_threshold: 50
+  
+  batch_processing:
+    default_batch_size: 100
+    max_batch_size: 1000
+    min_batch_size: 10
+    batch_timeout_ms: 5000
+    adaptive_batching: true
+    
+    adaptive_config:
+      target_latency_ms: 1000
+      adjustment_factor: 0.2
+      metric_window_size: 10
+      adjustment_interval_ms: 5000
+      memory_pressure_threshold: 80.0
+      per_table_optimization: true
+
+# Error handling configuration
+error_handling:
+  retry:
+    enabled: true
+    max_attempts: 3
+    initial_backoff_ms: 100
+    max_backoff_ms: 30000
+    backoff_multiplier: 2.0
+    jitter_factor: 0.1
+  
+  dead_letter_queue:
+    enabled: true
+    storage: "memory"
+    max_entries_per_task: 10000
+    retention_hours: 24
+    auto_reprocess_interval_minutes: 0
+  
+  circuit_breaker:
+    enabled: false
+    failure_threshold_percent: 50
+    min_requests: 10
+    reset_timeout_seconds: 60
+    half_open_max_requests: 3
+
+# At-least-once delivery configuration
+at_least_once_delivery:
+  enabled: true
+  deduplication_window: 10000
+  transaction_timeout_secs: 30
+  two_phase_commit: true
+  checkpoint_before_write: true
+
 # Plugin configuration (optional)
 plugins:
   directory: "./plugins"
-  enabled:
-    - "custom_transformer"
-    - "slack_notifier"
+  enabled: []
 "#
 }
 

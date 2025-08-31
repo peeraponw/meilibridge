@@ -17,7 +17,7 @@ logs/
 *.log
 
 # Local configuration
-config.yaml
+tasks/config.yaml
 config.local.yaml
 .env
 .env.local
