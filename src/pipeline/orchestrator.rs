@@ -383,16 +383,17 @@ impl PipelineOrchestrator {
         info!("Starting pipeline orchestrator");
 
         // Initialize dead letter queue
-        let dlq_storage: Arc<dyn DlqStorage> = if !self.config.redis.url.is_empty() {
-            info!("Using Redis-based dead letter queue");
-            Arc::new(RedisDlqStorage::new(
-                &self.config.redis.url,
-                self.config.redis.key_prefix.clone(),
-            )?)
-        } else {
-            info!("Using in-memory dead letter queue");
-            Arc::new(InMemoryDlqStorage::new())
-        };
+        let dlq_storage: Arc<dyn DlqStorage> =
+            if let Some(redis_config) = self.config.redis.as_ref() {
+                info!("Using Redis-based dead letter queue");
+                Arc::new(RedisDlqStorage::new(
+                    &redis_config.url,
+                    redis_config.key_prefix.clone(),
+                )?)
+            } else {
+                info!("Using in-memory dead letter queue");
+                Arc::new(InMemoryDlqStorage::new())
+            };
 
         let mut dlq = DeadLetterQueue::new(dlq_storage);
 
@@ -403,15 +404,16 @@ impl PipelineOrchestrator {
         self.dead_letter_queue = Some(Arc::new(dlq));
 
         // Initialize checkpoint manager
-        let checkpoint_storage: Arc<dyn CheckpointStorage> = if !self.config.redis.url.is_empty() {
-            info!("Using Redis-based checkpoint storage");
-            let mut redis_storage = RedisStorage::new(self.config.redis.clone());
-            redis_storage.connect().await?;
-            Arc::new(redis_storage)
-        } else {
-            info!("Using in-memory checkpoint storage");
-            Arc::new(MemoryStorage::new())
-        };
+        let checkpoint_storage: Arc<dyn CheckpointStorage> =
+            if let Some(redis_config) = self.config.redis.clone() {
+                info!("Using Redis-based checkpoint storage");
+                let mut redis_storage = RedisStorage::new(redis_config);
+                redis_storage.connect().await?;
+                Arc::new(redis_storage)
+            } else {
+                info!("Using in-memory checkpoint storage");
+                Arc::new(MemoryStorage::new())
+            };
 
         let flush_interval = Duration::from_secs(30); // Flush checkpoints every 30 seconds
         let batch_size = 10; // Flush after 10 checkpoints
@@ -478,7 +480,12 @@ impl PipelineOrchestrator {
             self.memory_monitor = Some(monitor_arc.clone());
 
             // Handle memory pressure events
-            let checkpoint_retention_config = self.config.redis.checkpoint_retention.clone();
+            let checkpoint_retention_config = self
+                .config
+                .redis
+                .as_ref()
+                .map(|cfg| cfg.checkpoint_retention.clone())
+                .unwrap_or_default();
             let active_task_ids: Vec<String> = self
                 .config
                 .sync_tasks
@@ -766,11 +773,13 @@ impl PipelineOrchestrator {
                 .iter()
                 .map(|task| task.id.clone())
                 .collect();
-            let max_checkpoints = self
+            let checkpoint_retention_config = self
                 .config
                 .redis
-                .checkpoint_retention
-                .max_checkpoints_per_task;
+                .as_ref()
+                .map(|cfg| cfg.checkpoint_retention.clone())
+                .unwrap_or_default();
+            let max_checkpoints = checkpoint_retention_config.max_checkpoints_per_task;
             let shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
 
             let handle = tokio::spawn(async move {

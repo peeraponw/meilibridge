@@ -49,7 +49,8 @@ pub struct Config {
     pub sync_tasks: Vec<SyncTaskConfig>,
 
     /// Redis configuration for state management
-    pub redis: RedisConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redis: Option<RedisConfig>,
 
     /// API server configuration
     #[serde(default)]
