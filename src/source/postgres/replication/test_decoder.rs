@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn parses_update_with_whitespace_values() {
-        let message = "table public.items: UPDATE: id[uuid]:'690594ad-bb6c-474c-9cd1-71451a133e68' name_en[text]:'Synced v4 Adidas Ultraboost 22' category[character varying]:'Fashion (รองเท้า)'";
+        let message = "table public.items: UPDATE: id[uuid]:'690594ad-bb6c-474c-9cd1-71451a133e68' name[text]:'Synced v4 Adidas Ultraboost 22' category[character varying]:'Fashion (รองเท้า)'";
         let event = parse_test_decoding_message("0/0".to_string(), message)
             .expect("parser result")
             .expect("event");
@@ -262,13 +262,13 @@ mod tests {
         match event {
             Event::Cdc(cdc) => {
                 assert_eq!(cdc.event_type, EventType::Update);
-                let name_en = cdc
+                let name = cdc
                     .data
-                    .get("name_en")
-                    .expect("name_en field should exist")
+                    .get("name")
+                    .expect("name field should exist")
                     .as_str()
-                    .expect("name_en should be string");
-                assert_eq!(name_en, "Synced v4 Adidas Ultraboost 22");
+                    .expect("name should be string");
+                assert_eq!(name, "Synced v4 Adidas Ultraboost 22");
 
                 let category = cdc
                     .data
