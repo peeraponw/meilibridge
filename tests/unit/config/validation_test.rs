@@ -47,14 +47,14 @@ mod validation_tests {
                 auto_create_index: true,
                 circuit_breaker: Default::default(),
             },
-            redis: Some(RedisConfig {
+            redis: RedisConfig {
                 url: "redis://localhost:6379".to_string(),
                 password: None,
                 database: 0,
                 key_prefix: "meilibridge".to_string(),
                 pool: Default::default(),
                 checkpoint_retention: Default::default(),
-            }),
+            },
             api: Default::default(),
             logging: Default::default(),
             monitoring: Default::default(),
@@ -88,14 +88,14 @@ mod validation_tests {
                 auto_create_index: true,
                 circuit_breaker: Default::default(),
             },
-            redis: Some(RedisConfig {
+            redis: RedisConfig {
                 url: "redis://localhost:6379".to_string(),
                 password: None,
                 database: 0,
                 key_prefix: "meilibridge".to_string(),
                 pool: Default::default(),
                 checkpoint_retention: Default::default(),
-            }),
+            },
             api: Default::default(),
             logging: Default::default(),
             monitoring: Default::default(),

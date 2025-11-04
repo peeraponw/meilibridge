@@ -108,7 +108,7 @@ pub fn create_test_config(postgres_url: &str, meilisearch_url: &str, redis_url: 
         }],
         sync_tasks: vec![],
         meilisearch: create_test_meilisearch_config(meilisearch_url),
-        redis: Some(create_test_redis_config(redis_url)),
+        redis: create_test_redis_config(redis_url),
         api: Default::default(),
         logging: Default::default(),
         monitoring: Default::default(),

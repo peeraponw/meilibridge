@@ -122,11 +122,9 @@ impl ConfigLoader {
             errors.push("Meilisearch URL cannot be empty".to_string());
         }
 
-        // Validate Redis configuration when provided
-        if let Some(redis) = config.redis.as_ref() {
-            if redis.url.is_empty() {
-                errors.push("Redis URL cannot be empty when Redis is configured".to_string());
-            }
+        // Validate Redis configuration
+        if config.redis.url.is_empty() {
+            errors.push("Redis URL cannot be empty".to_string());
         }
 
         // Validate API configuration

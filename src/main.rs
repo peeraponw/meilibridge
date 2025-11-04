@@ -274,14 +274,12 @@ async fn run_service(config: Config) -> Result<()> {
         .await;
 
     // Register Redis health check if configured
-    if let Some(redis_config) = config.redis.as_ref() {
-        if !redis_config.url.is_empty() {
-            health_registry
-                .register(Box::new(meilibridge::health::RedisHealthCheck::new(
-                    redis_config.url.clone(),
-                )))
-                .await;
-        }
+    if !config.redis.url.is_empty() {
+        health_registry
+            .register(Box::new(meilibridge::health::RedisHealthCheck::new(
+                config.redis.url.clone(),
+            )))
+            .await;
     }
 
     // Create API state with health registry and statement cache if using PostgreSQL

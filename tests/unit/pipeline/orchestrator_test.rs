@@ -28,14 +28,14 @@ async fn test_orchestrator_creation_no_sources() {
             auto_create_index: true,
             circuit_breaker: Default::default(),
         },
-        redis: Some(RedisConfig {
+        redis: RedisConfig {
             url: "redis://localhost:6379".to_string(),
             password: None,
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
             checkpoint_retention: Default::default(),
-        }),
+        },
         sync_tasks: vec![],
         api: Default::default(),
         logging: Default::default(),
@@ -82,14 +82,14 @@ async fn test_orchestrator_creation_with_single_source() {
             auto_create_index: true,
             circuit_breaker: Default::default(),
         },
-        redis: Some(RedisConfig {
+        redis: RedisConfig {
             url: "".to_string(), // Empty for in-memory
             password: None,
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
             checkpoint_retention: Default::default(),
-        }),
+        },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
             source_name: "primary".to_string(),
@@ -168,14 +168,14 @@ async fn test_orchestrator_with_multiple_sources() {
             auto_create_index: true,
             circuit_breaker: Default::default(),
         },
-        redis: Some(RedisConfig {
+        redis: RedisConfig {
             url: "".to_string(),
             password: None,
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
             checkpoint_retention: Default::default(),
-        }),
+        },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
             source_name: "source1".to_string(),
@@ -239,14 +239,14 @@ async fn test_orchestrator_with_filters() {
             auto_create_index: true,
             circuit_breaker: Default::default(),
         },
-        redis: Some(RedisConfig {
+        redis: RedisConfig {
             url: "".to_string(),
             password: None,
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
             checkpoint_retention: Default::default(),
-        }),
+        },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
             source_name: "primary".to_string(),
@@ -320,14 +320,14 @@ async fn test_orchestrator_with_soft_delete() {
             auto_create_index: true,
             circuit_breaker: Default::default(),
         },
-        redis: Some(RedisConfig {
+        redis: RedisConfig {
             url: "".to_string(),
             password: None,
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
             checkpoint_retention: Default::default(),
-        }),
+        },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
             source_name: "primary".to_string(),
@@ -399,14 +399,14 @@ async fn test_dlq_operations() {
             auto_create_index: true,
             circuit_breaker: Default::default(),
         },
-        redis: Some(RedisConfig {
+        redis: RedisConfig {
             url: "".to_string(),
             password: None,
             database: 0,
             key_prefix: "meilibridge".to_string(),
             pool: Default::default(),
             checkpoint_retention: Default::default(),
-        }),
+        },
         sync_tasks: vec![SyncTaskConfig {
             id: "task1".to_string(),
             source_name: "primary".to_string(),
